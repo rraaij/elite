@@ -1,0 +1,13 @@
+{
+	"schemaVersion": 1,
+	"lastReviewedAtIso": "2026-03-08T12:53:56.690Z",
+	"reviewedBy": {
+		"name": "Confirmed by user",
+		"role": "Project Owner"
+	},
+	"permissions": {
+		"derivativeDistributionApproved": true,
+		"originalAssetsProductionShippingApproved": true
+	},
+	"notes": "Legal approval confirmed by user in-session on 2026-03-08."
+}

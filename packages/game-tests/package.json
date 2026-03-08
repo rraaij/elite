@@ -9,6 +9,7 @@
 	"scripts": {
 		"test": "vitest run",
 		"test:replay": "vitest run src/replayBaseline.test.ts src/replayBaseline.test.js",
+		"oracle:generate": "vitest run --config scripts/vitest.oracle.config.ts",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"lint": "biome lint src"
 	}

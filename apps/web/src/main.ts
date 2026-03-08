@@ -245,6 +245,18 @@ interface VisualGoldenProbeResult {
 	height: number;
 }
 
+interface ReferenceVisualProbeScene {
+	sceneId: "title" | "cockpit" | "charts" | "combat";
+	hash: string;
+	width: number;
+	height: number;
+}
+
+interface ReferenceVisualProbeResult {
+	seed: number;
+	scenes: ReferenceVisualProbeScene[];
+}
+
 interface TouchInputSnapshot {
 	active: boolean;
 	rollAxis: number;
@@ -270,6 +282,7 @@ declare global {
 	interface Window {
 		__ELITE_DETERMINISM_PROBE__?: () => DeterminismProbeResult;
 		__ELITE_VISUAL_GOLDEN_PROBE__?: () => VisualGoldenProbeResult;
+		__ELITE_REFERENCE_VISUAL_PROBE__?: () => ReferenceVisualProbeResult;
 	}
 }
 
@@ -716,6 +729,118 @@ function runVisualGoldenProbe(): VisualGoldenProbeResult {
 		seed,
 		width,
 		height,
+	};
+}
+
+function hashRenderedSnapshot(
+	snapshot: ReturnType<ReturnType<typeof createEmptySimulation>["snapshot"]>,
+): {
+	hash: string;
+	width: number;
+	height: number;
+} {
+	const probeCanvas = document.createElement("canvas");
+	const probeRenderer = createCanvasRenderer({
+		canvas: probeCanvas,
+		wireframeScene: {
+			resolveBlueprintById: () => null,
+			modelScale: 5.5,
+			nearPlaneZ: 140,
+		},
+	});
+	const width = 960;
+	const height = 540;
+	probeRenderer.resize(width, height, 1);
+	probeRenderer.render(snapshot, {
+		elapsedMs: 16.67,
+		accumulatorMs: 0,
+		interpolationAlpha: 0,
+		simulatedSteps: 1,
+		wasClamped: false,
+	});
+
+	const context = probeCanvas.getContext("2d");
+	if (!context) {
+		throw new Error("Could not get probe canvas 2D context.");
+	}
+
+	const imageData = context.getImageData(0, 0, width, height);
+	return {
+		hash: fnv1a32Bytes(imageData.data),
+		width,
+		height,
+	};
+}
+
+function runReferenceVisualProbe(): ReferenceVisualProbeResult {
+	const seed = 0x12345678;
+	const simulation = createEmptySimulation({
+		scenarioId: "empty",
+		seed,
+	});
+	const controls = createDefaultPilotControls();
+	const keyframes = new Map<number, Partial<PilotControlState>>([
+		[0, { throttleAxis: 1, rollAxis: 0.3, pitchAxis: 0.1 }],
+		[2, { warpTogglePressed: true }],
+		[3, { warpTogglePressed: false }],
+		[60, { throttleAxis: 0, rollAxis: 0, pitchAxis: 0 }],
+		[80, { missileArmTogglePressed: true }],
+		[81, { missileArmTogglePressed: false }],
+		[110, { fireLaserPressed: true }],
+		[160, { fireLaserPressed: false }],
+		[200, { ecmTogglePressed: true }],
+		[201, { ecmTogglePressed: false }],
+		[260, { dockAttemptPressed: true }],
+		[261, { dockAttemptPressed: false }],
+		[330, { launchPressed: true }],
+		[331, { launchPressed: false }],
+	]);
+
+	for (let frame = 0; frame < 600; frame += 1) {
+		const updates = keyframes.get(frame);
+		if (updates) {
+			Object.assign(controls, updates);
+		}
+		simulation.setPilotControls(controls);
+		simulation.step(16.67);
+	}
+
+	const baseSnapshot = simulation.snapshot();
+	const titleSnapshot = structuredClone(baseSnapshot);
+	titleSnapshot.gameState.flow.phase = "title";
+	titleSnapshot.gameState.views.isDocked = true;
+	titleSnapshot.gameState.views.inStationSafeZone = true;
+	titleSnapshot.gameState.flight.speed = 0;
+	titleSnapshot.playerSpeed = 0;
+	titleSnapshot.gameState.universe.localBubbleShips = [];
+
+	const chartsSnapshot = structuredClone(baseSnapshot);
+	chartsSnapshot.gameState.flow.phase = "docked";
+	chartsSnapshot.gameState.views.isDocked = true;
+	chartsSnapshot.gameState.views.inStationSafeZone = true;
+	chartsSnapshot.gameState.flight.speed = 0;
+	chartsSnapshot.playerSpeed = 0;
+
+	const combatSnapshot = structuredClone(baseSnapshot);
+	combatSnapshot.gameState.flow.phase = "in-space";
+	combatSnapshot.gameState.views.isDocked = false;
+	combatSnapshot.gameState.views.ecmEnabled = true;
+	combatSnapshot.gameState.flight.missileArmed = true;
+	combatSnapshot.gameState.flight.energy = 28;
+	combatSnapshot.gameState.flight.forwardShield = 26;
+	combatSnapshot.gameState.flight.aftShield = 22;
+	combatSnapshot.gameState.flow.laserTemperature = 220;
+
+	const scenes: ReferenceVisualProbeScene[] = [
+		{ sceneId: "title", ...hashRenderedSnapshot(titleSnapshot) },
+		{ sceneId: "cockpit", ...hashRenderedSnapshot(baseSnapshot) },
+		{ sceneId: "charts", ...hashRenderedSnapshot(chartsSnapshot) },
+		{ sceneId: "combat", ...hashRenderedSnapshot(combatSnapshot) },
+	];
+
+	return {
+		seed,
+		scenes,
 	};
 }
 
@@ -1453,6 +1578,7 @@ const runner = createFixedStepRunner({
 });
 window.__ELITE_DETERMINISM_PROBE__ = runDeterminismProbe;
 window.__ELITE_VISUAL_GOLDEN_PROBE__ = runVisualGoldenProbe;
+window.__ELITE_REFERENCE_VISUAL_PROBE__ = runReferenceVisualProbe;
 
 // Mutable blueprint map hydrated from generated data-pack JSON.
 // The renderer reads through this resolver every frame so it can start rendering
@@ -2457,6 +2583,7 @@ window.addEventListener("beforeunload", () => {
 	saveSnapshotToLocalStorage(true);
 	delete window.__ELITE_DETERMINISM_PROBE__;
 	delete window.__ELITE_VISUAL_GOLDEN_PROBE__;
+	delete window.__ELITE_REFERENCE_VISUAL_PROBE__;
 	audio.dispose();
 	gamepad.dispose();
 	touchInput.dispose();

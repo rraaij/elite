@@ -1,0 +1,66 @@
+name: Legacy Build Oracle
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  legacy-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - gma85-ntsc
+          - gma86-pal
+          - source-disk-build
+          - source-disk-files
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 make vice build-essential git
+
+      - name: Install BeebAsm
+        run: |
+          if command -v beebasm >/dev/null 2>&1; then
+            beebasm --help >/dev/null 2>&1 || true
+            exit 0
+          fi
+
+          git clone --depth 1 https://github.com/stardot/beebasm.git /tmp/beebasm
+          make -C /tmp/beebasm code
+          sudo install /tmp/beebasm/beebasm /usr/local/bin/beebasm
+          beebasm --help >/dev/null 2>&1 || true
+
+      - name: Build + Verify Variant
+        run: |
+          cd sourcecode
+          make variant=${{ matrix.variant }} 2>&1 | tee ../legacy-build-${{ matrix.variant }}.log
+
+      - name: Generate Variant Manifest
+        run: |
+          cd sourcecode
+          python3 2-build-files/generate-artifact-manifest.py \
+            --variant ${{ matrix.variant }} \
+            --output ../legacy-manifest-${{ matrix.variant }}.json
+
+      - name: Archive Oracle Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-oracle-${{ matrix.variant }}
+          path: |
+            legacy-build-${{ matrix.variant }}.log
+            legacy-manifest-${{ matrix.variant }}.json
+            sourcecode/4-reference-binaries/${{ matrix.variant }}
+            sourcecode/3-assembled-output/*.bin
+            sourcecode/3-assembled-output/compile.txt

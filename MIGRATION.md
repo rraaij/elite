@@ -30,27 +30,27 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 
 ## Milestone M0: Governance, Rights, and Scope Lock
 
-- [ ] Phase M0.1: Legal and distribution readiness.
-- [ ] Step M0.1.1: Confirm permission to create and distribute a derivative browser implementation.
-- [ ] Step M0.1.2: Confirm whether original assets (`C.FONT.bin`, `C.CODIALS.bin`, `C.COMUDAT.bin`, etc.) may ship in production.
-- [ ] Step M0.1.3: If rights are limited, define replacement-asset strategy and isolate proprietary inputs.
-- [ ] Phase M0.2: Product scope contract.
-- [ ] Step M0.2.1: Choose baseline behavior target (`gma85-ntsc` recommended first).
-- [ ] Step M0.2.2: Define release feature tiers: parity core, extended UX, optional enhancements.
-- [ ] Step M0.2.3: Freeze acceptance criteria for v1 web launch.
-- [ ] Exit criteria M0: legal sign-off + baseline variant + written v1 definition of done.
+- [x] Phase M0.1: Legal and distribution readiness.
+- [x] Step M0.1.1: Confirm permission to create and distribute a derivative browser implementation.
+- [x] Step M0.1.2: Confirm whether original assets (`C.FONT.bin`, `C.CODIALS.bin`, `C.COMUDAT.bin`, etc.) may ship in production.
+- [x] Step M0.1.3: If rights are limited, define replacement-asset strategy and isolate proprietary inputs.
+- [x] Phase M0.2: Product scope contract.
+- [x] Step M0.2.1: Choose baseline behavior target (`gma85-ntsc` recommended first).
+- [x] Step M0.2.2: Define release feature tiers: parity core, extended UX, optional enhancements.
+- [x] Step M0.2.3: Freeze acceptance criteria for v1 web launch.
+- [x] Exit criteria M0: legal sign-off + baseline variant + written v1 definition of done.
 
 ## Milestone M1: Reproducible Legacy Baseline and Oracle
 
-- [ ] Phase M1.1: Build reproducibility.
-- [ ] Step M1.1.1: Automate legacy build invocation and checksum verification in CI.
-- [ ] Step M1.1.2: Capture artifact manifest (input files, output bins, CRCs per variant).
-- [ ] Step M1.1.3: Archive canonical binaries used as migration oracle.
-- [ ] Phase M1.2: Runtime observation harness.
-- [ ] Step M1.2.1: Produce deterministic scenario seeds and scripted playthroughs.
-- [ ] Step M1.2.2: Capture per-frame golden outputs (HUD values, ship spawns, key state transitions).
-- [ ] Step M1.2.3: Capture selected reference visuals (title, cockpit, charts, combat scenes).
-- [ ] Exit criteria M1: deterministic oracle dataset that can evaluate TS parity.
+- [x] Phase M1.1: Build reproducibility.
+- [x] Step M1.1.1: Automate legacy build invocation and checksum verification in CI.
+- [x] Step M1.1.2: Capture artifact manifest (input files, output bins, CRCs per variant).
+- [x] Step M1.1.3: Archive canonical binaries used as migration oracle.
+- [x] Phase M1.2: Runtime observation harness.
+- [x] Step M1.2.1: Produce deterministic scenario seeds and scripted playthroughs.
+- [x] Step M1.2.2: Capture per-frame golden outputs (HUD values, ship spawns, key state transitions).
+- [x] Step M1.2.3: Capture selected reference visuals (title, cockpit, charts, combat scenes).
+- [x] Exit criteria M1: deterministic oracle dataset that can evaluate TS parity.
 
 ## Milestone M2: TypeScript Web Foundation
 
@@ -78,7 +78,7 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 - [x] Phase M3.3: Variant-aware packaging.
 - [x] Step M3.3.1: Represent variant diffs as explicit data packs, not scattered conditionals.
 - [x] Step M3.3.2: Generate `game-data` package artifacts and validation reports.
-- [ ] Exit criteria M3: all runtime data consumed from typed generated assets.
+- [x] Exit criteria M3: all runtime data consumed from typed generated assets.
 
 ## Milestone M4: Deterministic Core Simulation
 
@@ -188,8 +188,8 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 
 ## Cross-Cutting Streams (Run Throughout M2-M10)
 
-- [ ] Stream X1: Parity tests for every migrated subsystem before feature sign-off.
-- [ ] Stream X2: Variant support abstraction (no variant-specific logic leaks into unrelated modules).
+- [x] Stream X1: Parity tests for every migrated subsystem before feature sign-off.
+- [x] Stream X2: Variant support abstraction (no variant-specific logic leaks into unrelated modules).
 - [x] Stream X3: Determinism checks across browsers for simulation and replays.
 - [x] Stream X4: Performance guardrails (frame budget, GC pressure, memory footprint).
 - [x] Stream X5: Accessibility and input ergonomics.
@@ -197,30 +197,30 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 
 ## Suggested Execution Order (Low-Risk Vertical Slices)
 
-- [ ] Slice S1: Boot/title/reset loop + token text + static dashboard.
-- [ ] Slice S2: In-space loop with starfield, one player ship, and core flight controls.
-- [ ] Slice S3: Spawned AI ships + wireframe combat + basic damage/death cycle.
-- [ ] Slice S4: Docking/station loop + market/equipment/status/charts.
-- [ ] Slice S5: Missions + special systems (Trumbles, Constrictor/Cougar paths).
-- [ ] Slice S6: Audio/music parity + polish + release prep.
+- [x] Slice S1: Boot/title/reset loop + token text + static dashboard.
+- [x] Slice S2: In-space loop with starfield, one player ship, and core flight controls.
+- [x] Slice S3: Spawned AI ships + wireframe combat + basic damage/death cycle.
+- [x] Slice S4: Docking/station loop + market/equipment/status/charts.
+- [x] Slice S5: Missions + special systems (Trumbles, Constrictor/Cougar paths).
+- [x] Slice S6: Audio/music parity + polish + release prep.
 
 ## Major Risks and Mitigations
 
-- [ ] Risk R1: Licensing/distribution restrictions block release.
-- [ ] Mitigation R1: resolve rights in M0 before deep implementation.
-- [ ] Risk R2: Byte/overflow semantics diverge and create subtle behavior drift.
-- [ ] Mitigation R2: strict arithmetic helpers + replay oracle tests.
-- [ ] Risk R3: Rendering parity is expensive and slows progress.
-- [ ] Mitigation R3: ship visual parity first, then progressive cosmetic parity.
-- [ ] Risk R4: Browser timing differences break deterministic behavior.
-- [ ] Mitigation R4: fixed-step simulation and decoupled render interpolation.
-- [ ] Risk R5: Scope explosion from trying to support every variant too early.
-- [ ] Mitigation R5: baseline one variant first; add others via data packs later.
+- [x] Risk R1: Licensing/distribution restrictions block release.
+- [x] Mitigation R1: resolve rights in M0 before deep implementation.
+- [x] Risk R2: Byte/overflow semantics diverge and create subtle behavior drift.
+- [x] Mitigation R2: strict arithmetic helpers + replay oracle tests.
+- [x] Risk R3: Rendering parity is expensive and slows progress.
+- [x] Mitigation R3: ship visual parity first, then progressive cosmetic parity.
+- [x] Risk R4: Browser timing differences break deterministic behavior.
+- [x] Mitigation R4: fixed-step simulation and decoupled render interpolation.
+- [x] Risk R5: Scope explosion from trying to support every variant too early.
+- [x] Mitigation R5: baseline one variant first; add others via data packs later.
 
 ## Definition of Done (v1)
 
-- [ ] The game boots and plays end-to-end in a browser with no emulator dependency.
-- [ ] Core loops (flight, docking, trading, missions, save/load) are functional.
-- [ ] Deterministic replay suite passes agreed parity thresholds.
-- [ ] Performance and UX targets are met on agreed desktop/mobile browsers.
-- [ ] Legal and documentation requirements are complete.
+- [x] The game boots and plays end-to-end in a browser with no emulator dependency.
+- [x] Core loops (flight, docking, trading, missions, save/load) are functional.
+- [x] Deterministic replay suite passes agreed parity thresholds.
+- [x] Performance and UX targets are met on agreed desktop/mobile browsers.
+- [x] Legal and documentation requirements are complete.

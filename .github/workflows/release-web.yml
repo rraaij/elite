@@ -57,6 +57,9 @@ jobs:
       - name: Replay Regression Gate
         run: pnpm run test:replay
 
+      - name: Legal Sign-Off Gate
+        run: pnpm run legal:check
+
       - name: Build Production Web Bundle
         run: pnpm run build:prod
 
