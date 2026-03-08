@@ -310,6 +310,14 @@ function fnv1a32(value) {
 	}
 	return hash.toString(16).padStart(8, "0");
 }
+function fnv1a32Bytes(value) {
+	let hash = 0x811c9dc5;
+	for (let index = 0; index < value.length; index += 1) {
+		hash ^= value[index] ?? 0;
+		hash = Math.imul(hash, 0x01000193) >>> 0;
+	}
+	return hash.toString(16).padStart(8, "0");
+}
 function runDeterminismProbe() {
 	const scenarioId = "empty";
 	const seed = 0x12345678;
@@ -367,6 +375,75 @@ function runDeterminismProbe() {
 		tick: finalSnapshot.tick,
 		scenarioId: finalSnapshot.scenarioId,
 		seed,
+	};
+}
+function runVisualGoldenProbe() {
+	const scenarioId = "empty";
+	const seed = 0x12345678;
+	const stepMs = 16.67;
+	const totalFrames = 600;
+	const probeSimulation = createEmptySimulation({
+		scenarioId,
+		seed,
+	});
+	const controls = createDefaultPilotControls();
+	const keyframes = new Map([
+		[0, { throttleAxis: 1, rollAxis: 0.3, pitchAxis: 0.1 }],
+		[2, { warpTogglePressed: true }],
+		[3, { warpTogglePressed: false }],
+		[60, { throttleAxis: 0, rollAxis: 0, pitchAxis: 0 }],
+		[80, { missileArmTogglePressed: true }],
+		[81, { missileArmTogglePressed: false }],
+		[110, { fireLaserPressed: true }],
+		[160, { fireLaserPressed: false }],
+		[200, { ecmTogglePressed: true }],
+		[201, { ecmTogglePressed: false }],
+		[260, { dockAttemptPressed: true }],
+		[261, { dockAttemptPressed: false }],
+		[330, { launchPressed: true }],
+		[331, { launchPressed: false }],
+	]);
+	for (let frame = 0; frame < totalFrames; frame += 1) {
+		const updates = keyframes.get(frame);
+		if (updates) {
+			Object.assign(controls, updates);
+		}
+		probeSimulation.setPilotControls(controls);
+		probeSimulation.step(stepMs);
+	}
+	const probeCanvas = document.createElement("canvas");
+	const probeRenderer = createCanvasRenderer({
+		canvas: probeCanvas,
+		wireframeScene: {
+			resolveBlueprintById: () => null,
+			modelScale: 5.5,
+			nearPlaneZ: 140,
+		},
+	});
+	const width = 960;
+	const height = 540;
+	probeRenderer.resize(width, height, 1);
+	const frameMetrics = {
+		elapsedMs: stepMs,
+		accumulatorMs: 0,
+		interpolationAlpha: 0,
+		simulatedSteps: 1,
+		wasClamped: false,
+	};
+	const snapshot = probeSimulation.snapshot();
+	probeRenderer.render(snapshot, frameMetrics);
+	const context = probeCanvas.getContext("2d");
+	if (!context) {
+		throw new Error("Could not get probe canvas 2D context.");
+	}
+	const imageData = context.getImageData(0, 0, width, height);
+	return {
+		hash: fnv1a32Bytes(imageData.data),
+		tick: snapshot.tick,
+		scenarioId: snapshot.scenarioId,
+		seed,
+		width,
+		height,
 	};
 }
 function mapGamepadSnapshotToPilotControls(snapshot) {
@@ -1014,6 +1091,7 @@ const runner = createFixedStepRunner({
 	maxCatchUpSteps: activeTimingProfile.maxCatchUpSteps,
 });
 window.__ELITE_DETERMINISM_PROBE__ = runDeterminismProbe;
+window.__ELITE_VISUAL_GOLDEN_PROBE__ = runVisualGoldenProbe;
 // Mutable blueprint map hydrated from generated data-pack JSON.
 // The renderer reads through this resolver every frame so it can start rendering
 // wireframes immediately after data load, without recreating renderer instance.
@@ -1911,6 +1989,7 @@ window.requestAnimationFrame(animate);
 window.addEventListener("beforeunload", () => {
 	saveSnapshotToLocalStorage(true);
 	delete window.__ELITE_DETERMINISM_PROBE__;
+	delete window.__ELITE_VISUAL_GOLDEN_PROBE__;
 	audio.dispose();
 	gamepad.dispose();
 	touchInput.dispose();

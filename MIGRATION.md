@@ -106,10 +106,10 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 - [x] Step M5.2.1: Render dashboard bars, compass, scanner, and indicators.
 - [x] Step M5.2.2: Render text layers and mixed view transitions.
 - [x] Step M5.2.3: Match color behavior and flashing/alert patterns.
-- [ ] Phase M5.3: Variant and performance handling.
+- [x] Phase M5.3: Variant and performance handling.
 - [x] Step M5.3.1: Add PAL/NTSC timing profile options for web frame pacing.
-- [ ] Step M5.3.2: Ensure no frame drops on target desktop/mobile hardware.
-- [ ] Exit criteria M5: visual parity in golden screenshot and replay comparisons.
+- [x] Step M5.3.2: Ensure no frame drops on target desktop/mobile hardware.
+- [x] Exit criteria M5: visual parity in golden screenshot and replay comparisons.
 
 ## Milestone M6: Input, Menus, Text, and Save/Load
 
@@ -153,7 +153,7 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 - [x] Step M8.2.1: Implement parser/player for docking and title music data (initial 5-byte frame parser + 3-voice WebAudio player).
 - [x] Step M8.2.2: Integrate runtime music state transitions (title, docking, in-flight) with explicit policy + tests.
 - [x] Step M8.2.3: Add mute/volume/mix controls and persistence.
-- [ ] Exit criteria M8: audio behavior is feature-complete and timing-stable.
+- [x] Exit criteria M8: audio behavior is feature-complete and timing-stable.
 
 ## Milestone M9: Browser Productization
 
@@ -184,7 +184,7 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 - [x] Step M10.3.1: Document architecture and subsystem mapping to original source modules.
 - [x] Step M10.3.2: Document data conversion pipeline and regeneration commands.
 - [x] Step M10.3.3: Document testing strategy (unit, replay, visual, performance).
-- [ ] Exit criteria M10: production release + maintainable engineering documentation.
+- [x] Exit criteria M10: production release + maintainable engineering documentation.
 
 ## Cross-Cutting Streams (Run Throughout M2-M10)
 
