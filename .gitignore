@@ -1,0 +1,9 @@
+/sourcecode/**/*
+.idea/
+node_modules/
+dist/
+coverage/
+*.log
+playwright-report/
+test-results/
+apps/web/public/game-data/

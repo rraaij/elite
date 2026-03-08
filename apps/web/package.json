@@ -1,0 +1,21 @@
+{
+  "name": "@elite/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@elite/game-core": "*",
+    "@elite/game-data": "*",
+    "@elite/game-input": "*",
+    "@elite/game-renderer": "*"
+  },
+  "scripts": {
+    "sync:data": "node scripts/syncDataPacks.mjs",
+    "dev": "npm run sync:data && vite",
+    "build": "npm run sync:data && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome lint src",
+    "test:e2e": "playwright test"
+  }
+}

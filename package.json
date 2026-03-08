@@ -1,0 +1,31 @@
+{
+  "name": "elite-web-migration",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TypeScript browser migration workspace for Elite.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run generate:data && npm run dev --workspace @elite/web",
+    "build": "npm run generate:data && npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "biome format . --check",
+    "generate:data": "npm run generate --workspace @elite/game-data",
+    "test": "npm run test --workspace @elite/game-tests --if-present",
+    "test:e2e": "npm run generate:data && npm run test:e2e --workspace @elite/web --if-present"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^25.3.5",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20.18.0"
+  }
+}
