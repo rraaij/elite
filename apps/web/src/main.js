@@ -1,4 +1,10 @@
 import {
+	createGameAudioEngine,
+	deriveAudioCueEdgeState,
+	detectAudioCuesFromEdgeStates,
+	resolveMusicTrackForSnapshot,
+} from "../../../packages/game-audio/src/index";
+import {
 	createEmptySimulation,
 	createFixedStepRunner,
 	deserializeSaveState,
@@ -10,6 +16,7 @@ import { createKeyboardInput } from "../../../packages/game-input/src/index";
 import { createCanvasRenderer } from "../../../packages/game-renderer/src/index";
 import "./styles.css";
 const SAVE_SLOT_KEY = "elite.migration.save-slot-1";
+const AUDIO_SETTINGS_KEY = "elite.migration.audio-settings-v1";
 const DEFAULT_VARIANT_ID = "gma85-ntsc";
 /**
  * Converts runtime JSON blueprints into renderer-ready minimal blueprints.
@@ -132,7 +139,37 @@ function mapKeyboardSnapshotToPilotControls(snapshot) {
 function resolveActiveTimingProfile(config) {
 	return resolveTimingProfile(config.timing, config.variantId);
 }
+function clamp01(value) {
+	return Math.min(1, Math.max(0, value));
+}
+function loadAudioSettingsFromLocalStorage() {
+	const fallback = {
+		masterVolume: 0.35,
+		sfxVolume: 1,
+		musicVolume: 0.65,
+		muted: false,
+	};
+	const payload = window.localStorage.getItem(AUDIO_SETTINGS_KEY);
+	if (!payload) {
+		return fallback;
+	}
+	try {
+		const parsed = JSON.parse(payload);
+		return {
+			masterVolume: clamp01(Number(parsed.masterVolume ?? fallback.masterVolume)),
+			sfxVolume: clamp01(Number(parsed.sfxVolume ?? fallback.sfxVolume)),
+			musicVolume: clamp01(Number(parsed.musicVolume ?? fallback.musicVolume)),
+			muted: Boolean(parsed.muted ?? fallback.muted),
+		};
+	} catch {
+		return fallback;
+	}
+}
+function saveAudioSettingsToLocalStorage(settings) {
+	window.localStorage.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(settings));
+}
 const runtimeConfig = getRuntimeConfigFromUrl(new URL(window.location.href));
+const audioSettings = loadAudioSettingsFromLocalStorage();
 const activeTimingProfile = resolveActiveTimingProfile(runtimeConfig);
 const root = document.querySelector("#app");
 if (!root) {
@@ -170,6 +207,52 @@ timingField.textContent = "Timing";
 const timingSelect = document.createElement("select");
 timingSelect.className = "runtime-select";
 timingField.append(timingSelect);
+const muteField = document.createElement("label");
+muteField.className = "runtime-field";
+muteField.textContent = "Audio";
+const muteRow = document.createElement("div");
+muteRow.className = "runtime-toggle-row";
+const muteToggle = document.createElement("input");
+muteToggle.className = "runtime-checkbox";
+muteToggle.type = "checkbox";
+muteToggle.checked = audioSettings.muted;
+const muteText = document.createElement("span");
+muteText.textContent = "Mute";
+muteRow.append(muteToggle, muteText);
+muteField.append(muteRow);
+const masterVolumeField = document.createElement("label");
+masterVolumeField.className = "runtime-field";
+masterVolumeField.textContent = "Master Volume";
+const masterVolumeRange = document.createElement("input");
+masterVolumeRange.className = "runtime-range";
+masterVolumeRange.type = "range";
+masterVolumeRange.min = "0";
+masterVolumeRange.max = "100";
+masterVolumeRange.step = "1";
+masterVolumeRange.value = String(Math.round(audioSettings.masterVolume * 100));
+masterVolumeField.append(masterVolumeRange);
+const sfxVolumeField = document.createElement("label");
+sfxVolumeField.className = "runtime-field";
+sfxVolumeField.textContent = "SFX Volume";
+const sfxVolumeRange = document.createElement("input");
+sfxVolumeRange.className = "runtime-range";
+sfxVolumeRange.type = "range";
+sfxVolumeRange.min = "0";
+sfxVolumeRange.max = "100";
+sfxVolumeRange.step = "1";
+sfxVolumeRange.value = String(Math.round(audioSettings.sfxVolume * 100));
+sfxVolumeField.append(sfxVolumeRange);
+const musicVolumeField = document.createElement("label");
+musicVolumeField.className = "runtime-field";
+musicVolumeField.textContent = "Music Volume";
+const musicVolumeRange = document.createElement("input");
+musicVolumeRange.className = "runtime-range";
+musicVolumeRange.type = "range";
+musicVolumeRange.min = "0";
+musicVolumeRange.max = "100";
+musicVolumeRange.step = "1";
+musicVolumeRange.value = String(Math.round(audioSettings.musicVolume * 100));
+musicVolumeField.append(musicVolumeRange);
 /**
  * Timing options are fixed and local, so we can populate them eagerly.
  */
@@ -197,6 +280,10 @@ const debugPanel = document.createElement("pre");
 debugPanel.className = "runtime-debug";
 debugPanel.hidden = !runtimeConfig.debug;
 sidebar.append(title, subtitle, dataStatus, variantField, timingField, actionBar, debugPanel);
+sidebar.insertBefore(muteField, actionBar);
+sidebar.insertBefore(masterVolumeField, actionBar);
+sidebar.insertBefore(sfxVolumeField, actionBar);
+sidebar.insertBefore(musicVolumeField, actionBar);
 layout.append(canvasPanel, sidebar);
 root.append(layout);
 const simulation = createEmptySimulation({
@@ -223,8 +310,66 @@ const renderer = createCanvasRenderer({
 	},
 });
 const keyboard = createKeyboardInput(window);
+const audio = createGameAudioEngine({
+	initialVolume: audioSettings.masterVolume,
+	initialSfxVolume: audioSettings.sfxVolume,
+	initialMusicVolume: audioSettings.musicVolume,
+	initialMuted: audioSettings.muted,
+});
 let runtimeDataContext = null;
 let runtimeDataError = null;
+let previousAudioState = deriveAudioCueEdgeState(simulation.snapshot());
+let lastExplosionCueMs = -Infinity;
+let activeMusicTrackId = null;
+function applyAudioSettings(settings) {
+	audio.setMasterVolume(settings.masterVolume);
+	audio.setSfxVolume(settings.sfxVolume);
+	audio.setMusicVolume(settings.musicVolume);
+	audio.setMuted(settings.muted);
+}
+applyAudioSettings(audioSettings);
+async function unlockAudioAfterGesture() {
+	await audio.unlock();
+	window.removeEventListener("pointerdown", unlockAudioAfterGesture);
+	window.removeEventListener("keydown", unlockAudioAfterGesture);
+	window.removeEventListener("touchstart", unlockAudioAfterGesture);
+}
+window.addEventListener("pointerdown", unlockAudioAfterGesture);
+window.addEventListener("keydown", unlockAudioAfterGesture);
+window.addEventListener("touchstart", unlockAudioAfterGesture);
+muteToggle.addEventListener("change", () => {
+	audioSettings.muted = muteToggle.checked;
+	audio.setMuted(audioSettings.muted);
+	saveAudioSettingsToLocalStorage(audioSettings);
+});
+masterVolumeRange.addEventListener("input", () => {
+	audioSettings.masterVolume = Number(masterVolumeRange.value) / 100;
+	audio.setMasterVolume(audioSettings.masterVolume);
+	saveAudioSettingsToLocalStorage(audioSettings);
+});
+sfxVolumeRange.addEventListener("input", () => {
+	audioSettings.sfxVolume = Number(sfxVolumeRange.value) / 100;
+	audio.setSfxVolume(audioSettings.sfxVolume);
+	saveAudioSettingsToLocalStorage(audioSettings);
+});
+musicVolumeRange.addEventListener("input", () => {
+	audioSettings.musicVolume = Number(musicVolumeRange.value) / 100;
+	audio.setMusicVolume(audioSettings.musicVolume);
+	saveAudioSettingsToLocalStorage(audioSettings);
+});
+function syncMusicTrack(snapshot) {
+	const nextTrackId = resolveMusicTrackForSnapshot(snapshot);
+	if (nextTrackId === activeMusicTrackId) {
+		return;
+	}
+	if (nextTrackId === null) {
+		audio.stopMusic();
+		activeMusicTrackId = null;
+		return;
+	}
+	audio.playMusic(nextTrackId);
+	activeMusicTrackId = nextTrackId;
+}
 /**
  * Resize canvas to panel bounds and account for browser DPI.
  * This keeps rendering crisp on both desktop and high-density screens.
@@ -303,6 +448,11 @@ async function initializeRuntimeDataUi() {
 		runtimeDataError = null;
 		// Rebuild renderer blueprint map from the newly loaded variant pack.
 		wireframeBlueprintMap = buildWireframeBlueprintMap(runtimeDataContext.dataPack);
+		audio.loadMusicData({
+			titleBytes: runtimeDataContext.dataPack.audio.theme.bytes,
+			dockingBytes: runtimeDataContext.dataPack.audio.comudat.bytes,
+		});
+		syncMusicTrack(simulation.snapshot());
 		variantSelect.replaceChildren();
 		for (const variant of runtimeDataContext.manifest.variants) {
 			const option = document.createElement("option");
@@ -320,6 +470,8 @@ async function initializeRuntimeDataUi() {
 		runtimeDataContext = null;
 		runtimeDataError = error instanceof Error ? error.message : String(error);
 		wireframeBlueprintMap = new Map();
+		audio.stopMusic();
+		activeMusicTrackId = null;
 		variantSelect.replaceChildren();
 		const fallback = document.createElement("option");
 		fallback.value = runtimeConfig.variantId;
@@ -386,6 +538,10 @@ function updateDebugPanel(nowMs, frameElapsedMs, simulatedSteps, wasClamped) {
 			(runtimeDataContext?.dataPack.audio.comudat.byteLength ?? 0) +
 				(runtimeDataContext?.dataPack.audio.theme.byteLength ?? 0),
 		).padStart(8, " ")}`,
+		`audio.master      ${fixed(audioSettings.masterVolume, 2)}`,
+		`audio.sfx         ${fixed(audioSettings.sfxVolume, 2)}`,
+		`audio.music       ${fixed(audioSettings.musicVolume, 2)}`,
+		`audio.muted       ${String(audioSettings.muted).padStart(8, " ")}`,
 		`data.padWords      ${String(variantSummary?.wordsPaddingBytes ?? 0).padStart(8, " ")}`,
 		`data.iantokTail    ${String(variantSummary?.iantokTrailingPayloadBytes ?? 0).padStart(8, " ")}`,
 		`data.error         ${runtimeDataError ?? "-"}`,
@@ -417,6 +573,19 @@ function animate(nowMs) {
 	simulation.setPilotControls(mapKeyboardSnapshotToPilotControls(keyboard.snapshot()));
 	const metrics = runner.frame(nowMs);
 	const snapshot = simulation.snapshot();
+	syncMusicTrack(snapshot);
+	const audioState = deriveAudioCueEdgeState(snapshot);
+	const cueDiff = detectAudioCuesFromEdgeStates(
+		previousAudioState,
+		audioState,
+		nowMs,
+		lastExplosionCueMs,
+	);
+	for (const cueId of cueDiff.cues) {
+		audio.playSfx(cueId);
+	}
+	lastExplosionCueMs = cueDiff.nextLastExplosionCueMs;
+	previousAudioState = audioState;
 	renderer.render(snapshot, metrics);
 	updateDebugPanel(nowMs, metrics.elapsedMs, metrics.simulatedSteps, metrics.wasClamped);
 	window.requestAnimationFrame(animate);
@@ -424,5 +593,6 @@ function animate(nowMs) {
 window.requestAnimationFrame(animate);
 // Dispose input listeners when the page unloads to keep teardown clean in tests.
 window.addEventListener("beforeunload", () => {
+	audio.dispose();
 	keyboard.dispose();
 });

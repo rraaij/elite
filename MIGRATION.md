@@ -23,7 +23,7 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 - [x] `apps/web`: browser app shell (UI, routing, settings, persistence glue) scaffolded.
 - [x] `packages/game-core`: deterministic gameplay simulation (no DOM dependency) scaffolded.
 - [x] `packages/game-renderer`: Canvas/WebGL rendering (wireframes, scanner, HUD) scaffolded.
-- [ ] `packages/game-audio`: WebAudio SFX + music playback.
+- [x] `packages/game-audio`: WebAudio SFX + music playback scaffolded.
 - [x] `packages/game-data`: generated TS/JSON data from original binaries with variant-pack generation.
 - [x] `packages/game-input`: keyboard/gamepad/touch abstraction scaffolded.
 - [x] `packages/game-tests`: parity harness, replay tests, snapshots, perf tests scaffolded.
@@ -146,13 +146,13 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 ## Milestone M8: Audio and Music
 
 - [ ] Phase M8.1: SFX pipeline.
-- [ ] Step M8.1.1: Port sound effect priority/envelope/frequency behavior from table-driven routines.
-- [ ] Step M8.1.2: Implement channel mixing and concurrency limits in WebAudio.
-- [ ] Step M8.1.3: Validate gameplay-critical cues (laser, ECM, explosions, alerts).
+- [x] Step M8.1.1: Port sound effect priority/envelope/frequency behavior from table-driven routines (initial WebAudio table-driven synth + runtime cue wiring).
+- [x] Step M8.1.2: Implement channel mixing and concurrency limits in WebAudio (voice pool, per-cue caps, priority-based voice stealing).
+- [x] Step M8.1.3: Validate gameplay-critical cues (laser, ECM, explosions, alerts) with cue-policy tests.
 - [ ] Phase M8.2: Music pipeline.
-- [ ] Step M8.2.1: Implement parser/player for docking and title music data.
-- [ ] Step M8.2.2: Integrate runtime music state transitions (title, docking, in-flight).
-- [ ] Step M8.2.3: Add mute/volume/mix controls and persistence.
+- [x] Step M8.2.1: Implement parser/player for docking and title music data (initial 5-byte frame parser + 3-voice WebAudio player).
+- [x] Step M8.2.2: Integrate runtime music state transitions (title, docking, in-flight) with explicit policy + tests.
+- [x] Step M8.2.3: Add mute/volume/mix controls and persistence.
 - [ ] Exit criteria M8: audio behavior is feature-complete and timing-stable.
 
 ## Milestone M9: Browser Productization

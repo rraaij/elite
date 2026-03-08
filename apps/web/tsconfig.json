@@ -4,6 +4,7 @@
 		"types": ["vite/client"],
 		"baseUrl": "./",
 		"paths": {
+			"@elite/game-audio": ["../../packages/game-audio/src/index.ts"],
 			"@elite/game-core": ["../../packages/game-core/src/index.ts"],
 			"@elite/game-renderer": ["../../packages/game-renderer/src/index.ts"],
 			"@elite/game-data": ["../../packages/game-data/src/index.ts"],

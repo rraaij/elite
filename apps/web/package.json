@@ -4,6 +4,7 @@
 	"private": true,
 	"type": "module",
 	"dependencies": {
+		"@elite/game-audio": "*",
 		"@elite/game-core": "*",
 		"@elite/game-data": "*",
 		"@elite/game-input": "*",

@@ -113,6 +113,21 @@ body {
 	cursor: not-allowed;
 }
 
+.runtime-range {
+	width: 100%;
+	accent-color: #5fd7ff;
+}
+
+.runtime-toggle-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.runtime-checkbox {
+	accent-color: #5fd7ff;
+}
+
 .runtime-actions {
 	display: grid;
 	grid-template-columns: 1fr;

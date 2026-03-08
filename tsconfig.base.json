@@ -9,7 +9,8 @@
 			"@elite/game-core": ["packages/game-core/src/index.ts"],
 			"@elite/game-renderer": ["packages/game-renderer/src/index.ts"],
 			"@elite/game-data": ["packages/game-data/src/index.ts"],
-			"@elite/game-input": ["packages/game-input/src/index.ts"]
+			"@elite/game-input": ["packages/game-input/src/index.ts"],
+			"@elite/game-audio": ["packages/game-audio/src/index.ts"]
 		},
 		"strict": true,
 		"noUncheckedIndexedAccess": true,

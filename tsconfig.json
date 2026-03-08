@@ -5,6 +5,7 @@
 		{ "path": "./packages/game-renderer" },
 		{ "path": "./packages/game-data" },
 		{ "path": "./packages/game-input" },
+		{ "path": "./packages/game-audio" },
 		{ "path": "./packages/game-tests" },
 		{ "path": "./apps/web" }
 	]
