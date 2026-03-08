@@ -157,33 +157,33 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 
 ## Milestone M9: Browser Productization
 
-- [ ] Phase M9.1: UX and app concerns.
-- [ ] Step M9.1.1: Add responsive layout for desktop/tablet/mobile.
-- [ ] Step M9.1.2: Add pause/menu/settings/help overlays.
-- [ ] Step M9.1.3: Add input onboarding and first-run guidance.
-- [ ] Phase M9.2: Reliability and performance hardening.
-- [ ] Step M9.2.1: Add memory/perf profiling and frame-time budget checks.
-- [ ] Step M9.2.2: Add crash-safe state snapshots and corruption guards.
-- [ ] Step M9.2.3: Add deterministic replay regression in CI.
-- [ ] Phase M9.3: Web delivery.
-- [ ] Step M9.3.1: Add production build pipeline and asset caching strategy.
-- [ ] Step M9.3.2: Add deployment targets and environment configuration.
-- [ ] Exit criteria M9: release candidate passes browser compatibility and perf gates.
+- [x] Phase M9.1: UX and app concerns.
+- [x] Step M9.1.1: Add responsive layout for desktop/tablet/mobile.
+- [x] Step M9.1.2: Add pause/menu/settings/help overlays.
+- [x] Step M9.1.3: Add input onboarding and first-run guidance.
+- [x] Phase M9.2: Reliability and performance hardening.
+- [x] Step M9.2.1: Add memory/perf profiling and frame-time budget checks.
+- [x] Step M9.2.2: Add crash-safe state snapshots and corruption guards.
+- [x] Step M9.2.3: Add deterministic replay regression in CI.
+- [x] Phase M9.3: Web delivery.
+- [x] Step M9.3.1: Add production build pipeline and asset caching strategy.
+- [x] Step M9.3.2: Add deployment targets and environment configuration.
+- [x] Exit criteria M9: release candidate passes browser compatibility and perf gates.
 
 ## Milestone M10: Validation, Release, and Handover
 
-- [ ] Phase M10.1: QA closure.
-- [ ] Step M10.1.1: Complete scenario matrix (combat, docking, trading, missions, save/load).
-- [ ] Step M10.1.2: Complete parity delta report vs oracle captures.
-- [ ] Step M10.1.3: Resolve priority parity gaps or document accepted differences.
-- [ ] Phase M10.2: Release operations.
-- [ ] Step M10.2.1: Publish versioned web release.
-- [ ] Step M10.2.2: Publish known-issues and compatibility notes.
-- [ ] Step M10.2.3: Establish post-release bug triage and patch cadence.
-- [ ] Phase M10.3: Documentation handoff.
-- [ ] Step M10.3.1: Document architecture and subsystem mapping to original source modules.
-- [ ] Step M10.3.2: Document data conversion pipeline and regeneration commands.
-- [ ] Step M10.3.3: Document testing strategy (unit, replay, visual, performance).
+- [x] Phase M10.1: QA closure.
+- [x] Step M10.1.1: Complete scenario matrix (combat, docking, trading, missions, save/load).
+- [x] Step M10.1.2: Complete parity delta report vs oracle captures.
+- [x] Step M10.1.3: Resolve priority parity gaps or document accepted differences.
+- [x] Phase M10.2: Release operations.
+- [x] Step M10.2.1: Publish versioned web release.
+- [x] Step M10.2.2: Publish known-issues and compatibility notes.
+- [x] Step M10.2.3: Establish post-release bug triage and patch cadence.
+- [x] Phase M10.3: Documentation handoff.
+- [x] Step M10.3.1: Document architecture and subsystem mapping to original source modules.
+- [x] Step M10.3.2: Document data conversion pipeline and regeneration commands.
+- [x] Step M10.3.3: Document testing strategy (unit, replay, visual, performance).
 - [ ] Exit criteria M10: production release + maintainable engineering documentation.
 
 ## Cross-Cutting Streams (Run Throughout M2-M10)
@@ -191,7 +191,7 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 - [ ] Stream X1: Parity tests for every migrated subsystem before feature sign-off.
 - [ ] Stream X2: Variant support abstraction (no variant-specific logic leaks into unrelated modules).
 - [ ] Stream X3: Determinism checks across browsers for simulation and replays.
-- [ ] Stream X4: Performance guardrails (frame budget, GC pressure, memory footprint).
+- [x] Stream X4: Performance guardrails (frame budget, GC pressure, memory footprint).
 - [ ] Stream X5: Accessibility and input ergonomics.
 - [ ] Stream X6: Security/privacy review for save data handling in browser storage.
 

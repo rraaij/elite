@@ -8,7 +8,7 @@ export default defineConfig({
 		trace: "on-first-retry",
 	},
 	webServer: {
-		command: "npm run dev -- --host 127.0.0.1 --port 4173",
+		command: "npm run preview:prod",
 		port: 4173,
 		reuseExistingServer: !process.env.CI,
 		timeout: 120_000,
@@ -17,6 +17,22 @@ export default defineConfig({
 		{
 			name: "chromium",
 			use: { ...devices["Desktop Chrome"] },
+		},
+		{
+			name: "firefox",
+			use: { ...devices["Desktop Firefox"] },
+		},
+		{
+			name: "webkit",
+			use: { ...devices["Desktop Safari"] },
+		},
+		{
+			name: "mobile-chrome",
+			use: { ...devices["Pixel 7"] },
+		},
+		{
+			name: "mobile-safari",
+			use: { ...devices["iPhone 14"] },
 		},
 	],
 });

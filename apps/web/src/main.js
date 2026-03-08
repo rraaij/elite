@@ -15,9 +15,14 @@ import { DEFAULT_SCENARIOS, getScenarioById } from "../../../packages/game-data/
 import { createKeyboardInput } from "../../../packages/game-input/src/index";
 import { createCanvasRenderer } from "../../../packages/game-renderer/src/index";
 import "./styles.css";
-const SAVE_SLOT_KEY = "elite.migration.save-slot-1";
+const SAVE_SLOT_PRIMARY_KEY = "elite.migration.save-slot-primary";
+const SAVE_SLOT_BACKUP_KEY = "elite.migration.save-slot-backup";
 const AUDIO_SETTINGS_KEY = "elite.migration.audio-settings-v1";
-const DEFAULT_VARIANT_ID = "gma85-ntsc";
+const FIRST_RUN_GUIDE_KEY = "elite.migration.first-run-guide-v1";
+const AUTOSAVE_INTERVAL_MS = 15_000;
+const DEFAULT_VARIANT_ID = import.meta.env.VITE_DEFAULT_VARIANT_ID || "gma85-ntsc";
+const DATA_BASE_PATH = import.meta.env.VITE_DATA_BASE_PATH || "/game-data";
+const ENABLE_SERVICE_WORKER = import.meta.env.PROD && import.meta.env.VITE_DISABLE_SW !== "1";
 /**
  * Converts runtime JSON blueprints into renderer-ready minimal blueprints.
  *
@@ -87,7 +92,7 @@ async function fetchJson(url) {
  * We resolve unknown variants to the first available manifest entry.
  */
 async function loadRuntimeData(desiredVariantId) {
-	const manifest = await fetchJson("/game-data/manifest.json");
+	const manifest = await fetchJson(`${DATA_BASE_PATH}/manifest.json`);
 	if (!manifest.variants.length) {
 		throw new Error("Generated manifest has no variants.");
 	}
@@ -97,7 +102,7 @@ async function loadRuntimeData(desiredVariantId) {
 	if (!match) {
 		throw new Error("Could not resolve a variant from generated manifest.");
 	}
-	const dataPack = await fetchJson(`/game-data/${match.variantId}/data-pack.json`);
+	const dataPack = await fetchJson(`${DATA_BASE_PATH}/${match.variantId}/data-pack.json`);
 	return {
 		resolvedVariantId: match.variantId,
 		manifest,
@@ -275,17 +280,93 @@ saveButton.textContent = "Save Snapshot (F6)";
 const loadButton = document.createElement("button");
 loadButton.className = "runtime-button";
 loadButton.textContent = "Load Snapshot (F7)";
-actionBar.append(saveButton, loadButton);
+const menuButton = document.createElement("button");
+menuButton.className = "runtime-button";
+menuButton.textContent = "Menu (Esc)";
+const pauseButton = document.createElement("button");
+pauseButton.className = "runtime-button";
+pauseButton.textContent = "Pause";
+actionBar.append(saveButton, loadButton, menuButton, pauseButton);
 const debugPanel = document.createElement("pre");
 debugPanel.className = "runtime-debug";
 debugPanel.hidden = !runtimeConfig.debug;
+const overlay = document.createElement("section");
+overlay.className = "runtime-overlay";
+overlay.hidden = true;
+const overlayPanel = document.createElement("div");
+overlayPanel.className = "runtime-overlay-panel";
+const overlayTitle = document.createElement("h2");
+overlayTitle.className = "runtime-overlay-title";
+overlayTitle.textContent = "Runtime Menu";
+const overlayTabs = document.createElement("div");
+overlayTabs.className = "runtime-overlay-tabs";
+const settingsTabButton = document.createElement("button");
+settingsTabButton.className = "runtime-overlay-tab";
+settingsTabButton.type = "button";
+settingsTabButton.textContent = "Settings";
+const helpTabButton = document.createElement("button");
+helpTabButton.className = "runtime-overlay-tab";
+helpTabButton.type = "button";
+helpTabButton.textContent = "Help";
+overlayTabs.append(settingsTabButton, helpTabButton);
+const settingsPane = document.createElement("div");
+settingsPane.className = "runtime-overlay-pane";
+const helpPane = document.createElement("div");
+helpPane.className = "runtime-overlay-pane";
+const helpText = document.createElement("pre");
+helpText.className = "runtime-help-text";
+helpText.textContent = [
+	"Key Help",
+	"",
+	"Roll: Left / Right",
+	"Pitch: Up / Down",
+	"Throttle: W / S",
+	"Fire Laser: Space",
+	"Missile Arm: M",
+	"Missile Fire: N",
+	"ECM: E",
+	"Warp Toggle: J",
+	"Dock Attempt: D",
+	"Launch: L",
+	"Save Snapshot: F6",
+	"Load Snapshot: F7",
+	"Menu: Esc",
+	"Pause: P",
+].join("\n");
+helpPane.append(helpText);
+const overlayActions = document.createElement("div");
+overlayActions.className = "runtime-overlay-actions";
+const resumeButton = document.createElement("button");
+resumeButton.className = "runtime-button";
+resumeButton.type = "button";
+resumeButton.textContent = "Resume";
+const closeButton = document.createElement("button");
+closeButton.className = "runtime-button";
+closeButton.type = "button";
+closeButton.textContent = "Close";
+overlayActions.append(resumeButton, closeButton);
+const onboardingCard = document.createElement("section");
+onboardingCard.className = "runtime-onboarding";
+const onboardingTitle = document.createElement("h3");
+onboardingTitle.className = "runtime-onboarding-title";
+onboardingTitle.textContent = "Quick Start";
+const onboardingText = document.createElement("p");
+onboardingText.className = "runtime-onboarding-text";
+onboardingText.textContent =
+	"Use Arrow keys to steer, W/S throttle, Space to fire, M/N for missiles, E for ECM, and Esc for menu.";
+const onboardingDoneButton = document.createElement("button");
+onboardingDoneButton.className = "runtime-button";
+onboardingDoneButton.type = "button";
+onboardingDoneButton.textContent = "Got It";
+onboardingCard.append(onboardingTitle, onboardingText, onboardingDoneButton);
+settingsPane.append(onboardingCard);
+overlayPanel.append(overlayTitle, overlayTabs, settingsPane, helpPane, overlayActions);
+overlay.append(overlayPanel);
 sidebar.append(title, subtitle, dataStatus, variantField, timingField, actionBar, debugPanel);
-sidebar.insertBefore(muteField, actionBar);
-sidebar.insertBefore(masterVolumeField, actionBar);
-sidebar.insertBefore(sfxVolumeField, actionBar);
-sidebar.insertBefore(musicVolumeField, actionBar);
+settingsPane.append(muteField, masterVolumeField, sfxVolumeField, musicVolumeField);
 layout.append(canvasPanel, sidebar);
 root.append(layout);
+root.append(overlay);
 const simulation = createEmptySimulation({
 	scenarioId: runtimeConfig.scenarioId,
 	seed: runtimeConfig.seed,
@@ -321,6 +402,22 @@ let runtimeDataError = null;
 let previousAudioState = deriveAudioCueEdgeState(simulation.snapshot());
 let lastExplosionCueMs = -Infinity;
 let activeMusicTrackId = null;
+let menuOpen = false;
+let paused = false;
+let pauseFrameNowMs = null;
+let activeOverlayTab = "settings";
+let onboardingAcknowledged = window.localStorage.getItem(FIRST_RUN_GUIDE_KEY) === "1";
+let saveStatusMessage = "save: idle";
+let lastAutosaveMs = 0;
+let serviceWorkerStatusMessage = ENABLE_SERVICE_WORKER
+	? "sw: pending registration"
+	: "sw: disabled";
+const perfStats = {
+	frameSamples: [],
+	sampleLimit: 120,
+	overBudgetFrames: 0,
+	lastFps: 0,
+};
 function applyAudioSettings(settings) {
 	audio.setMasterVolume(settings.masterVolume);
 	audio.setSfxVolume(settings.sfxVolume);
@@ -328,6 +425,36 @@ function applyAudioSettings(settings) {
 	audio.setMuted(settings.muted);
 }
 applyAudioSettings(audioSettings);
+function updateOverlayTabUi() {
+	const settingsActive = activeOverlayTab === "settings";
+	settingsPane.hidden = !settingsActive;
+	helpPane.hidden = settingsActive;
+	settingsTabButton.dataset.active = settingsActive ? "true" : "false";
+	helpTabButton.dataset.active = settingsActive ? "false" : "true";
+}
+function openMenu(tab = "settings") {
+	activeOverlayTab = tab;
+	updateOverlayTabUi();
+	menuOpen = true;
+	overlay.hidden = false;
+}
+function closeMenu() {
+	menuOpen = false;
+	overlay.hidden = true;
+}
+function setPaused(nextPaused) {
+	paused = nextPaused;
+	pauseButton.textContent = paused ? "Resume" : "Pause";
+	if (paused) {
+		pauseFrameNowMs = performance.now();
+		openMenu("settings");
+	} else {
+		pauseFrameNowMs = null;
+		closeMenu();
+	}
+}
+updateOverlayTabUi();
+onboardingCard.hidden = onboardingAcknowledged;
 async function unlockAudioAfterGesture() {
 	await audio.unlock();
 	window.removeEventListener("pointerdown", unlockAudioAfterGesture);
@@ -357,6 +484,52 @@ musicVolumeRange.addEventListener("input", () => {
 	audio.setMusicVolume(audioSettings.musicVolume);
 	saveAudioSettingsToLocalStorage(audioSettings);
 });
+settingsTabButton.addEventListener("click", () => {
+	activeOverlayTab = "settings";
+	updateOverlayTabUi();
+});
+helpTabButton.addEventListener("click", () => {
+	activeOverlayTab = "help";
+	updateOverlayTabUi();
+});
+menuButton.addEventListener("click", () => {
+	if (menuOpen) {
+		closeMenu();
+		return;
+	}
+	openMenu("settings");
+});
+pauseButton.addEventListener("click", () => {
+	setPaused(!paused);
+});
+resumeButton.addEventListener("click", () => {
+	setPaused(false);
+});
+closeButton.addEventListener("click", () => {
+	closeMenu();
+});
+onboardingDoneButton.addEventListener("click", () => {
+	onboardingAcknowledged = true;
+	onboardingCard.hidden = true;
+	window.localStorage.setItem(FIRST_RUN_GUIDE_KEY, "1");
+	closeMenu();
+});
+if (!onboardingAcknowledged) {
+	openMenu("help");
+}
+if (ENABLE_SERVICE_WORKER && "serviceWorker" in navigator) {
+	window.addEventListener("load", () => {
+		navigator.serviceWorker
+			.register("/sw.js")
+			.then(() => {
+				serviceWorkerStatusMessage = "sw: registered";
+			})
+			.catch((error) => {
+				const reason = error instanceof Error ? error.message : String(error);
+				serviceWorkerStatusMessage = `sw: registration failed (${reason})`;
+			});
+	});
+}
 function syncMusicTrack(snapshot) {
 	const nextTrackId = resolveMusicTrackForSnapshot(snapshot);
 	if (nextTrackId === activeMusicTrackId) {
@@ -381,27 +554,50 @@ function resizeCanvasToPanel() {
 }
 window.addEventListener("resize", resizeCanvasToPanel);
 resizeCanvasToPanel();
-/**
- * Save-state stub used in M2:
- * stores a serialized simulation snapshot in localStorage.
- */
-function saveSnapshotToLocalStorage() {
-	const payload = serializeSaveState(simulation.snapshot());
-	window.localStorage.setItem(SAVE_SLOT_KEY, payload);
+function saveSnapshotToLocalStorage(isAutosave = false) {
+	try {
+		const payload = serializeSaveState(simulation.snapshot());
+		const previousPrimary = window.localStorage.getItem(SAVE_SLOT_PRIMARY_KEY);
+		if (previousPrimary) {
+			window.localStorage.setItem(SAVE_SLOT_BACKUP_KEY, previousPrimary);
+		}
+		window.localStorage.setItem(SAVE_SLOT_PRIMARY_KEY, payload);
+		saveStatusMessage = isAutosave
+			? "save: autosaved primary+backup"
+			: "save: wrote primary+backup";
+	} catch (error) {
+		saveStatusMessage = `save: failed (${error instanceof Error ? error.message : String(error)})`;
+	}
 }
-/**
- * Load-state stub used in M2:
- * reads the payload back and restores simulation state.
- */
+function tryRestoreSnapshotPayload(raw) {
+	try {
+		const envelope = deserializeSaveState(raw);
+		simulation.restore(envelope.snapshot);
+		return true;
+	} catch {
+		return false;
+	}
+}
 function loadSnapshotFromLocalStorage() {
-	const payload = window.localStorage.getItem(SAVE_SLOT_KEY);
-	if (!payload) {
+	const primaryPayload = window.localStorage.getItem(SAVE_SLOT_PRIMARY_KEY);
+	const backupPayload = window.localStorage.getItem(SAVE_SLOT_BACKUP_KEY);
+	if (!primaryPayload && !backupPayload) {
+		saveStatusMessage = "save: no snapshot in storage";
 		return;
 	}
-	const envelope = deserializeSaveState(payload);
-	simulation.restore(envelope.snapshot);
+	if (primaryPayload && tryRestoreSnapshotPayload(primaryPayload)) {
+		saveStatusMessage = "save: restored primary snapshot";
+		return;
+	}
+	if (backupPayload && tryRestoreSnapshotPayload(backupPayload)) {
+		saveStatusMessage = "save: restored backup snapshot (primary invalid)";
+		return;
+	}
+	saveStatusMessage = "save: both primary and backup are invalid";
 }
-saveButton.addEventListener("click", saveSnapshotToLocalStorage);
+saveButton.addEventListener("click", () => {
+	saveSnapshotToLocalStorage();
+});
 loadButton.addEventListener("click", loadSnapshotFromLocalStorage);
 /**
  * Rebuild one URL search param then reload page.
@@ -436,6 +632,18 @@ window.addEventListener("keydown", (event) => {
 	if (event.code === "F7") {
 		event.preventDefault();
 		loadSnapshotFromLocalStorage();
+	}
+	if (event.code === "Escape") {
+		event.preventDefault();
+		if (menuOpen) {
+			closeMenu();
+		} else {
+			openMenu("settings");
+		}
+	}
+	if (event.code === "KeyP") {
+		event.preventDefault();
+		setPaused(!paused);
 	}
 });
 /**
@@ -503,6 +711,10 @@ function updateDebugPanel(nowMs, frameElapsedMs, simulatedSteps, wasClamped) {
 		`frame.elapsedMs    ${fixed(frameElapsedMs, 2)}`,
 		`frame.steps        ${String(simulatedSteps).padStart(8, " ")}`,
 		`frame.clamped      ${String(wasClamped).padStart(8, " ")}`,
+		`frame.fps          ${fixed(perfStats.lastFps, 1)}`,
+		`frame.overBudget   ${String(perfStats.overBudgetFrames).padStart(8, " ")}`,
+		`save.status       ${saveStatusMessage}`,
+		`sw.status         ${serviceWorkerStatusMessage}`,
 		`sim.tick           ${String(simSnapshot.tick).padStart(8, " ")}`,
 		`sim.simulatedMs    ${fixed(simSnapshot.simulatedMs, 2)}`,
 		`sim.headingDeg     ${fixed(simSnapshot.playerHeadingDeg, 2)}`,
@@ -542,6 +754,7 @@ function updateDebugPanel(nowMs, frameElapsedMs, simulatedSteps, wasClamped) {
 		`audio.sfx         ${fixed(audioSettings.sfxVolume, 2)}`,
 		`audio.music       ${fixed(audioSettings.musicVolume, 2)}`,
 		`audio.muted       ${String(audioSettings.muted).padStart(8, " ")}`,
+		`guide.seen        ${String(onboardingAcknowledged).padStart(8, " ")}`,
 		`data.padWords      ${String(variantSummary?.wordsPaddingBytes ?? 0).padStart(8, " ")}`,
 		`data.iantokTail    ${String(variantSummary?.iantokTrailingPayloadBytes ?? 0).padStart(8, " ")}`,
 		`data.error         ${runtimeDataError ?? "-"}`,
@@ -570,10 +783,26 @@ function updateDebugPanel(nowMs, frameElapsedMs, simulatedSteps, wasClamped) {
  */
 function animate(nowMs) {
 	// Push latest control state into the deterministic simulation before stepping.
-	simulation.setPilotControls(mapKeyboardSnapshotToPilotControls(keyboard.snapshot()));
-	const metrics = runner.frame(nowMs);
+	if (!paused) {
+		simulation.setPilotControls(mapKeyboardSnapshotToPilotControls(keyboard.snapshot()));
+	}
+	const frameNowMs = paused ? (pauseFrameNowMs ?? nowMs) : nowMs;
+	const metrics = runner.frame(frameNowMs);
 	const snapshot = simulation.snapshot();
 	syncMusicTrack(snapshot);
+	const elapsedMs = Math.max(0.0001, metrics.elapsedMs);
+	perfStats.lastFps = 1000 / elapsedMs;
+	perfStats.frameSamples.push(elapsedMs);
+	if (perfStats.frameSamples.length > perfStats.sampleLimit) {
+		perfStats.frameSamples.shift();
+	}
+	if (metrics.elapsedMs > activeTimingProfile.stepMs * 1.5) {
+		perfStats.overBudgetFrames += 1;
+	}
+	if (!paused && nowMs - lastAutosaveMs >= AUTOSAVE_INTERVAL_MS) {
+		saveSnapshotToLocalStorage(true);
+		lastAutosaveMs = nowMs;
+	}
 	const audioState = deriveAudioCueEdgeState(snapshot);
 	const cueDiff = detectAudioCuesFromEdgeStates(
 		previousAudioState,
@@ -593,6 +822,7 @@ function animate(nowMs) {
 window.requestAnimationFrame(animate);
 // Dispose input listeners when the page unloads to keep teardown clean in tests.
 window.addEventListener("beforeunload", () => {
+	saveSnapshotToLocalStorage(true);
 	audio.dispose();
 	keyboard.dispose();
 });

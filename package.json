@@ -10,12 +10,14 @@
 	"scripts": {
 		"dev": "npm run generate:data && npm run dev --workspace @elite/web",
 		"build": "npm run generate:data && npm run build --workspaces --if-present",
+		"build:prod": "npm run generate:data && npm run build:prod --workspace @elite/web",
 		"typecheck": "npm run typecheck --workspaces --if-present",
 		"lint": "npm run lint --workspaces --if-present",
 		"format": "biome format . --write",
 		"check": "tsc -b && biome check --write .",
 		"generate:data": "npm run generate --workspace @elite/game-data",
 		"test": "npm run test --workspace @elite/game-tests --if-present",
+		"test:replay": "npm run test:replay --workspace @elite/game-tests --if-present",
 		"test:e2e": "npm run generate:data && npm run test:e2e --workspace @elite/web --if-present"
 	},
 	"devDependencies": {

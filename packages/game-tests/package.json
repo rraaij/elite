@@ -8,6 +8,7 @@
 	},
 	"scripts": {
 		"test": "vitest run",
+		"test:replay": "vitest run src/replayBaseline.test.ts src/replayBaseline.test.js",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"lint": "biome lint src"
 	}

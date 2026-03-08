@@ -14,7 +14,9 @@
 		"sync:data": "node scripts/syncDataPacks.mjs",
 		"dev": "npm run sync:data && vite",
 		"build": "npm run sync:data && vite build",
+		"build:prod": "npm run sync:data && vite build --mode production",
 		"preview": "vite preview",
+		"preview:prod": "vite preview --host 127.0.0.1 --port 4173",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"lint": "biome lint src",
 		"test:e2e": "playwright test"
