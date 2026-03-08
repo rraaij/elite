@@ -30,6 +30,171 @@ function normalizeHeading(angleDeg) {
 	const wrapped = angleDeg % 360;
 	return wrapped >= 0 ? wrapped : wrapped + 360;
 }
+const MARKET_COMMODITIES = [
+	{
+		id: 0,
+		name: "Food",
+		unit: "t",
+		basePriceCenticredits: 78,
+		baseQuantityTons: 18,
+		economyGradient: -5,
+		priceMask: 0x07,
+		quantityMask: 0x0f,
+	},
+	{
+		id: 1,
+		name: "Textiles",
+		unit: "t",
+		basePriceCenticredits: 92,
+		baseQuantityTons: 16,
+		economyGradient: -3,
+		priceMask: 0x07,
+		quantityMask: 0x0f,
+	},
+	{
+		id: 2,
+		name: "Radioactives",
+		unit: "t",
+		basePriceCenticredits: 156,
+		baseQuantityTons: 10,
+		economyGradient: 2,
+		priceMask: 0x0f,
+		quantityMask: 0x07,
+	},
+	{
+		id: 3,
+		name: "Slaves",
+		unit: "t",
+		basePriceCenticredits: 108,
+		baseQuantityTons: 8,
+		economyGradient: -1,
+		priceMask: 0x0f,
+		quantityMask: 0x07,
+	},
+	{
+		id: 4,
+		name: "Liquor/Wines",
+		unit: "t",
+		basePriceCenticredits: 144,
+		baseQuantityTons: 9,
+		economyGradient: -2,
+		priceMask: 0x0f,
+		quantityMask: 0x0f,
+	},
+	{
+		id: 5,
+		name: "Luxuries",
+		unit: "t",
+		basePriceCenticredits: 220,
+		baseQuantityTons: 5,
+		economyGradient: 4,
+		priceMask: 0x1f,
+		quantityMask: 0x07,
+	},
+	{
+		id: 6,
+		name: "Narcotics",
+		unit: "t",
+		basePriceCenticredits: 264,
+		baseQuantityTons: 4,
+		economyGradient: 5,
+		priceMask: 0x1f,
+		quantityMask: 0x07,
+	},
+	{
+		id: 7,
+		name: "Computers",
+		unit: "t",
+		basePriceCenticredits: 198,
+		baseQuantityTons: 7,
+		economyGradient: 3,
+		priceMask: 0x0f,
+		quantityMask: 0x07,
+	},
+];
+const EQUIPMENT_DEFINITIONS = [
+	{
+		id: 0,
+		key: "dockingComputer",
+		name: "Docking Computer",
+		priceCenticredits: 15_000,
+	},
+	{
+		id: 1,
+		key: "energyUnit",
+		name: "Energy Unit",
+		priceCenticredits: 12_500,
+	},
+	{
+		id: 2,
+		key: "fuelScoops",
+		name: "Fuel Scoops",
+		priceCenticredits: 5_250,
+	},
+	{
+		id: 3,
+		key: "extraCargoBay",
+		name: "Extra Cargo Bay",
+		priceCenticredits: 4_000,
+	},
+];
+const COMBAT_RANK_THRESHOLDS = [
+	{ minPoints: 0, rank: "Harmless" },
+	{ minPoints: 8, rank: "Mostly Harmless" },
+	{ minPoints: 24, rank: "Poor" },
+	{ minPoints: 48, rank: "Average" },
+	{ minPoints: 80, rank: "Above Average" },
+	{ minPoints: 128, rank: "Competent" },
+	{ minPoints: 192, rank: "Dangerous" },
+	{ minPoints: 320, rank: "Deadly" },
+	{ minPoints: 512, rank: "Elite" },
+];
+function deriveSystemEconomyLevel(seed) {
+	return ((seed[0] ^ seed[1] ^ seed[2]) >>> 1) & 0x07;
+}
+function deriveSystemFluctuation(seed) {
+	return ((seed[0] + (seed[1] << 1) + (seed[2] << 2)) ^ 0x5a) & 0xff;
+}
+function getCommodityMarketSample(fluctuation, commodityIndex) {
+	return (fluctuation + commodityIndex * 29) & 0xff;
+}
+function computeCommodityPriceCenticredits(definition, economyLevel, marketSample) {
+	const sampleDelta = (marketSample & definition.priceMask) - (definition.priceMask >> 1);
+	const economyDelta = (economyLevel - 3) * definition.economyGradient;
+	const rawPrice = definition.basePriceCenticredits + sampleDelta * 2 + economyDelta * 3;
+	return clamp(rawPrice, 10, 4_000);
+}
+function computeCommodityAvailabilityTons(definition, economyLevel, marketSample) {
+	const sampleDelta = (marketSample & definition.quantityMask) - (definition.quantityMask >> 1);
+	const economyDelta = (3 - economyLevel) * definition.economyGradient;
+	const rawQuantity = definition.baseQuantityTons + sampleDelta + economyDelta;
+	return clamp(rawQuantity, 0, 63);
+}
+function createMarketStateForSeed(seed) {
+	const economyLevel = deriveSystemEconomyLevel(seed);
+	const fluctuation = deriveSystemFluctuation(seed);
+	const pricesCenticredits = MARKET_COMMODITIES.map((definition, index) =>
+		computeCommodityPriceCenticredits(
+			definition,
+			economyLevel,
+			getCommodityMarketSample(fluctuation, index),
+		),
+	);
+	const availableTons = MARKET_COMMODITIES.map((definition, index) =>
+		computeCommodityAvailabilityTons(
+			definition,
+			economyLevel,
+			getCommodityMarketSample(fluctuation, index),
+		),
+	);
+	return {
+		economyLevel,
+		fluctuation,
+		commodities: MARKET_COMMODITIES.map((definition) => ({ ...definition })),
+		pricesCenticredits,
+		availableTons,
+	};
+}
 /**
  * Creates initial commander state with conservative defaults that map to a
  * "new game" profile while we continue porting canonical save formats.
@@ -42,6 +207,25 @@ function createInitialCommanderState() {
 		fuelTenths: 70,
 		legalStatus: 0,
 		combatRankPoints: 0,
+		killCount: 0,
+		missionProgressStage: 0,
+		missionsCompletedCount: 0,
+		missionBriefingId: null,
+		missionDebriefId: null,
+		missionBriefingPending: false,
+		missionDebriefPending: false,
+		lastMissionEventTick: 0,
+		trumbleCount: 0,
+		trumbleMood: 0,
+		trumbleVisible: false,
+		cargoHoldCapacityTons: 20,
+		cargoTonsByCommodity: new Array(MARKET_COMMODITIES.length).fill(0),
+		equipment: {
+			dockingComputer: false,
+			energyUnit: false,
+			fuelScoops: false,
+			extraCargoBay: false,
+		},
 	};
 }
 /**
@@ -86,12 +270,22 @@ function createInitialFlightState() {
  * expected data shape so galaxy/system logic can plug in incrementally.
  */
 function createInitialUniverseState() {
+	const currentSystemSeed = [0x5a4a, 0x0248, 0xb753];
 	return {
 		galaxyNumber: 0,
-		currentSystemSeed: [0x5a4a, 0x0248, 0xb753],
-		targetSystemSeed: [0x5a4a, 0x0248, 0xb753],
+		currentSystemSeed,
+		targetSystemSeed: [...currentSystemSeed],
+		hyperspaceJumps: 0,
 		localBubbleShips: [],
 		nextShipSlotId: 1,
+		market: createMarketStateForSeed(currentSystemSeed),
+		specialEncounters: {
+			constrictorSpawned: false,
+			constrictorDestroyed: false,
+			cougarSpawned: false,
+			cougarDestroyed: false,
+			witchspaceEncounters: 0,
+		},
 	};
 }
 /**
@@ -163,6 +357,10 @@ function clearFlightAndUniverseWorkspaces(state) {
 	state.flow.messageDelayCounter = 0;
 	state.flow.laserPulseCounter = 0;
 	state.flow.laserTemperature = 0;
+	state.commander.trumbleVisible = state.commander.trumbleCount > 0;
+}
+function refreshLocalMarket(state) {
+	state.universe.market = createMarketStateForSeed(state.universe.currentSystemSeed);
 }
 /**
  * Equivalent of BEGIN: initialize configuration defaults and commander context.
@@ -189,6 +387,7 @@ export function runResetEntryPoint(state) {
 	state.flight.aftShield = 100;
 	state.flight.stationDistance = 0;
 	clearFlightAndUniverseWorkspaces(state);
+	refreshLocalMarket(state);
 	// Reset clears most workspaces, but in docked mode we pin station distance
 	// and safe-zone state explicitly.
 	state.views.inStationSafeZone = true;
@@ -280,6 +479,10 @@ export function cloneCanonicalGameState(state) {
 		scenarioId: state.scenarioId,
 		commander: {
 			...state.commander,
+			cargoTonsByCommodity: [...state.commander.cargoTonsByCommodity],
+			equipment: {
+				...state.commander.equipment,
+			},
 		},
 		views: {
 			...state.views,
@@ -291,18 +494,41 @@ export function cloneCanonicalGameState(state) {
 			galaxyNumber: state.universe.galaxyNumber,
 			currentSystemSeed: [...state.universe.currentSystemSeed],
 			targetSystemSeed: [...state.universe.targetSystemSeed],
+			hyperspaceJumps: state.universe.hyperspaceJumps,
 			localBubbleShips: state.universe.localBubbleShips.map((ship) => ({
 				slotId: ship.slotId,
 				kind: ship.kind,
 				blueprintId: ship.blueprintId,
+				...(ship.aiRole !== undefined ? { aiRole: ship.aiRole } : {}),
+				...(ship.specialEncounterType !== undefined
+					? { specialEncounterType: ship.specialEncounterType }
+					: {}),
+				...(ship.hostilityLevel !== undefined ? { hostilityLevel: ship.hostilityLevel } : {}),
 				flags: ship.flags,
 				hullStrength: ship.hullStrength,
+				...(ship.lastDamagedByPlayer !== undefined
+					? { lastDamagedByPlayer: ship.lastDamagedByPlayer }
+					: {}),
 				ageMs: ship.ageMs,
 				ttlMs: ship.ttlMs,
 				position: { ...ship.position },
 				velocity: { ...ship.velocity },
 			})),
 			nextShipSlotId: state.universe.nextShipSlotId,
+			market: {
+				economyLevel: state.universe.market.economyLevel,
+				fluctuation: state.universe.market.fluctuation,
+				commodities: state.universe.market.commodities.map((commodity) => ({ ...commodity })),
+				pricesCenticredits: [...state.universe.market.pricesCenticredits],
+				availableTons: [...state.universe.market.availableTons],
+			},
+			specialEncounters: {
+				constrictorSpawned: state.universe.specialEncounters.constrictorSpawned,
+				constrictorDestroyed: state.universe.specialEncounters.constrictorDestroyed,
+				cougarSpawned: state.universe.specialEncounters.cougarSpawned,
+				cougarDestroyed: state.universe.specialEncounters.cougarDestroyed,
+				witchspaceEncounters: state.universe.specialEncounters.witchspaceEncounters,
+			},
 		},
 		timers: {
 			...state.timers,
@@ -332,18 +558,46 @@ export function cloneCanonicalGameState(state) {
  * This gives the canonical model a concrete ship-block list early in migration,
  * while detailed spawn logic from NWSHP/NWSTARS is still pending.
  */
-function spawnPlaceholderShip(state, spawnRoll) {
+function getShipBaseHostility(role, legalStatus) {
+	switch (role) {
+		case "police":
+			return legalStatus >= 20 ? 82 : 12;
+		case "pirate":
+			return 78;
+		case "bounty-hunter":
+			return legalStatus >= 24 ? 74 : 16;
+		case "trader":
+			return legalStatus >= 64 ? 24 : 6;
+	}
+}
+function deriveSpawnRole(state, spawnRoll) {
+	const legalStatus = state.commander.legalStatus;
+	if (state.views.inStationSafeZone && legalStatus >= 40) {
+		return "police";
+	}
+	if (legalStatus >= 24 && (spawnRoll & 0b11) === 0) {
+		return "bounty-hunter";
+	}
+	return (spawnRoll & 0b11) <= 1 ? "pirate" : "trader";
+}
+function spawnPlaceholderShip(state, spawnRoll, roleOverride, specialEncounterType) {
 	const slotId = state.universe.nextShipSlotId;
 	state.universe.nextShipSlotId += 1;
 	// Cycle through a small subset of known ship blueprint IDs for visual variety.
 	const blueprintCycle = [11, 12, 16, 17, 19, 24];
 	const blueprintId = blueprintCycle[spawnRoll % blueprintCycle.length] ?? 11;
+	const role = roleOverride ?? deriveSpawnRole(state, spawnRoll);
+	const hostilityLevel = getShipBaseHostility(role, state.commander.legalStatus);
 	const ship = {
 		slotId,
 		kind: "ship",
 		blueprintId,
+		aiRole: role,
+		...(specialEncounterType !== undefined ? { specialEncounterType } : {}),
+		hostilityLevel,
 		flags: spawnRoll & 0b111,
 		hullStrength: 50 + (spawnRoll & 0x1f),
+		lastDamagedByPlayer: false,
 		ageMs: 0,
 		ttlMs: null,
 		position: {
@@ -381,6 +635,7 @@ function createDebrisFragment(state, sourceShip, spreadSeed) {
 		blueprintId: sourceShip.blueprintId,
 		flags: sourceShip.flags | 0b1000_0000,
 		hullStrength: 1,
+		lastDamagedByPlayer: false,
 		ageMs: 0,
 		ttlMs: 1200 + (spreadSeed & 0x3f) * 25,
 		position: {
@@ -456,6 +711,29 @@ function selectFrontCombatTarget(state) {
 const STATION_SAFE_ZONE_DISTANCE = 1_800;
 const STATION_DOCKING_DISTANCE = 260;
 const STATION_LAUNCH_DISTANCE = 700;
+const DOCKING_COMPUTER_DISTANCE = 900;
+const DOCKING_COMPUTER_MAX_SPEED = 25;
+function countShipsByRole(state, role) {
+	let count = 0;
+	for (const ship of state.universe.localBubbleShips) {
+		if (ship.kind === "ship" && ship.aiRole === role) {
+			count += 1;
+		}
+	}
+	return count;
+}
+function updateShipHostilityLevels(state) {
+	const legalStatus = state.commander.legalStatus;
+	for (const ship of state.universe.localBubbleShips) {
+		if (ship.kind !== "ship") {
+			continue;
+		}
+		const role = ship.aiRole ?? "pirate";
+		const base = getShipBaseHostility(role, legalStatus);
+		const safeZoneBias = state.views.inStationSafeZone ? -18 : 0;
+		ship.hostilityLevel = clamp(base + safeZoneBias, 0, 100);
+	}
+}
 /**
  * Advance station distance and update safe-zone flag while in space.
  *
@@ -487,8 +765,13 @@ function applyDockAttempt(state, requestDockAttempt) {
 	if (!state.views.inStationSafeZone) {
 		return false;
 	}
-	if (state.flight.stationDistance > STATION_DOCKING_DISTANCE) {
+	const hasDockingComputer = state.commander.equipment.dockingComputer;
+	const maxDockDistance = hasDockingComputer ? DOCKING_COMPUTER_DISTANCE : STATION_DOCKING_DISTANCE;
+	if (state.flight.stationDistance > maxDockDistance) {
 		return false;
+	}
+	if (hasDockingComputer && state.flight.speed <= DOCKING_COMPUTER_MAX_SPEED) {
+		state.flight.speed = Math.min(state.flight.speed, 10);
 	}
 	// Docking too fast causes a shield scrape and aborts docking this step.
 	if (state.flight.speed > 12) {
@@ -577,6 +860,7 @@ function applyLaserCombat(state, requestFireLaser, combatRoll) {
 	);
 	const laserDamage = baseDamage + controlBonus;
 	target.hullStrength = Math.max(0, target.hullStrength - laserDamage);
+	target.lastDamagedByPlayer = true;
 }
 /**
  * Update missile arming/locking and optionally fire one missile.
@@ -617,6 +901,25 @@ function applyMissileCombat(
 		state.flight.missileTargetSlotId = target?.slotId ?? null;
 		state.flight.missileLockTimerMs = 0;
 	} else {
+		const maneuverScale = stepMs / 16.67;
+		const evasiveSign = ((combatRoll + target.slotId) & 1) === 0 ? 1 : -1;
+		const evasiveBias = target.aiRole === "bounty-hunter" ? 1.6 : 1.1;
+		if (target.aiRole === "pirate" || target.aiRole === "bounty-hunter") {
+			target.velocity.x = clamp(
+				target.velocity.x + evasiveSign * evasiveBias * maneuverScale,
+				-14,
+				14,
+			);
+			target.velocity.y = clamp(target.velocity.y - evasiveSign * 0.9 * maneuverScale, -10, 10);
+		}
+		const losesLockByCountermeasure =
+			(target.aiRole === "pirate" || target.aiRole === "bounty-hunter") &&
+			(combatRoll & 0x1f) === 0;
+		if (losesLockByCountermeasure) {
+			state.flight.missileTargetSlotId = null;
+			state.flight.missileLockTimerMs = 0;
+			return;
+		}
 		state.flight.missileLockTimerMs += stepMs;
 	}
 	// We need a target and lock time before missile launch can occur.
@@ -630,6 +933,7 @@ function applyMissileCombat(
 	state.flight.missileLockTimerMs = 0;
 	const missileDamage = 64 + (combatRoll & 0x0f);
 	target.hullStrength = Math.max(0, target.hullStrength - missileDamage);
+	target.lastDamagedByPlayer = true;
 	// Missile launches inside the safe zone are heavily illegal.
 	if (state.views.inStationSafeZone) {
 		state.commander.legalStatus = clamp(state.commander.legalStatus + 4, 0, 255);
@@ -702,6 +1006,205 @@ function applyIncomingHostileDamage(state, combatRoll) {
 	runDeath2EntryPoint(state);
 	return true;
 }
+function applyShipCombatTactics(state, stepMs, combatRoll) {
+	const maneuverScale = stepMs / 16.67;
+	for (const ship of state.universe.localBubbleShips) {
+		if (ship.kind !== "ship") {
+			continue;
+		}
+		const role = ship.aiRole ?? "pirate";
+		const hostility =
+			ship.hostilityLevel ?? getShipBaseHostility(role, state.commander.legalStatus);
+		const aggression = hostility / 100;
+		const maneuverSign = ((combatRoll + ship.slotId) & 1) === 0 ? 1 : -1;
+		if ((role === "pirate" || role === "bounty-hunter") && !state.views.inStationSafeZone) {
+			ship.velocity.x = clamp(
+				ship.velocity.x + maneuverSign * (0.55 + aggression * 0.35) * maneuverScale,
+				-14,
+				14,
+			);
+			ship.velocity.y = clamp(
+				ship.velocity.y - maneuverSign * (0.4 + aggression * 0.3) * maneuverScale,
+				-10,
+				10,
+			);
+			continue;
+		}
+		if (role === "police" && state.commander.legalStatus >= 40) {
+			ship.velocity.x = clamp(
+				ship.velocity.x + (ship.position.x > 0 ? -0.45 : 0.45) * maneuverScale,
+				-12,
+				12,
+			);
+			ship.velocity.y = clamp(
+				ship.velocity.y + (ship.position.y > 0 ? -0.3 : 0.3) * maneuverScale,
+				-8,
+				8,
+			);
+			continue;
+		}
+		if (role === "trader" && hostility < 20) {
+			ship.velocity.x = clamp(
+				ship.velocity.x + (ship.position.x >= 0 ? 0.2 : -0.2) * maneuverScale,
+				-8,
+				8,
+			);
+		}
+	}
+}
+function applyWitchspaceInteractions(state, spawnRoll, activeShipCount) {
+	if (
+		!state.views.inWitchspace &&
+		state.flight.warpEngaged &&
+		(spawnRoll & 0x3f) === 0x2a &&
+		!state.views.inStationSafeZone
+	) {
+		state.views.inWitchspace = true;
+		state.views.inStationSafeZone = false;
+		state.flight.stationDistance = 7_200;
+		state.universe.specialEncounters.witchspaceEncounters += 1;
+		state.timers.spawnCountdownMs = 280;
+		return;
+	}
+	if (!state.views.inWitchspace) {
+		return;
+	}
+	if (state.timers.spawnCountdownMs <= 0 && activeShipCount < 6) {
+		spawnPlaceholderShip(state, spawnRoll ^ 0x5a, "pirate", "witchspace-raider");
+		state.timers.spawnCountdownMs = 340 + (spawnRoll & 0x1f) * 6;
+	}
+	if ((state.timers.missionTicks % 540 === 0 && (spawnRoll & 0x0f) === 0) || state.views.isDocked) {
+		state.views.inWitchspace = false;
+		state.flight.stationDistance = Math.max(state.flight.stationDistance, 4_800);
+	}
+}
+function applySpecialEncounterSpawns(state, spawnRoll, activeShipCount) {
+	if (state.views.inStationSafeZone || state.views.inWitchspace) {
+		return;
+	}
+	if (
+		!state.universe.specialEncounters.constrictorSpawned &&
+		state.commander.missionProgressStage >= 2 &&
+		state.commander.killCount >= 5 &&
+		activeShipCount < 6 &&
+		(spawnRoll & 0x1f) === 0x07
+	) {
+		spawnPlaceholderShip(state, spawnRoll ^ 0x33, "bounty-hunter", "constrictor");
+		state.universe.specialEncounters.constrictorSpawned = true;
+		state.timers.spawnCountdownMs = 500;
+		return;
+	}
+	if (
+		state.universe.specialEncounters.constrictorDestroyed &&
+		!state.universe.specialEncounters.cougarSpawned &&
+		activeShipCount < 6 &&
+		(spawnRoll & 0x1f) === 0x12
+	) {
+		spawnPlaceholderShip(state, spawnRoll ^ 0x66, "bounty-hunter", "cougar");
+		state.universe.specialEncounters.cougarSpawned = true;
+		state.timers.spawnCountdownMs = 520;
+	}
+}
+function getKillAwardPoints(blueprintId) {
+	return 1 + (blueprintId & 0x03);
+}
+function applyCommanderKillProgress(commander, blueprintId) {
+	commander.killCount += 1;
+	commander.combatRankPoints = Math.min(
+		65_535,
+		commander.combatRankPoints + getKillAwardPoints(blueprintId),
+	);
+}
+function updateCommanderMissionProgress(state) {
+	const commander = state.commander;
+	const triggerBriefing = (briefingId) => {
+		commander.missionBriefingId = briefingId;
+		commander.missionBriefingPending = true;
+		commander.lastMissionEventTick = state.timers.missionTicks;
+	};
+	const triggerDebrief = (debriefId) => {
+		commander.missionDebriefId = debriefId;
+		commander.missionDebriefPending = true;
+		commander.lastMissionEventTick = state.timers.missionTicks;
+	};
+	if (
+		commander.missionProgressStage === 0 &&
+		commander.combatRankPoints >= 8 &&
+		state.views.isDocked
+	) {
+		commander.missionProgressStage = 1;
+		triggerBriefing(1);
+		return;
+	}
+	if (commander.missionProgressStage === 1 && !state.views.isDocked) {
+		commander.missionProgressStage = 2;
+		return;
+	}
+	if (commander.missionProgressStage === 2 && state.views.isDocked && commander.killCount >= 3) {
+		commander.missionProgressStage = 3;
+		commander.missionsCompletedCount += 1;
+		commander.combatRankPoints = Math.min(65_535, commander.combatRankPoints + 5);
+		triggerDebrief(1);
+		return;
+	}
+	if (
+		commander.missionProgressStage <= 2 &&
+		state.universe.specialEncounters.constrictorDestroyed &&
+		state.views.isDocked
+	) {
+		commander.missionProgressStage = 3;
+		commander.missionsCompletedCount += 1;
+		commander.combatRankPoints = Math.min(65_535, commander.combatRankPoints + 6);
+		triggerDebrief(1);
+		return;
+	}
+	if (
+		commander.missionProgressStage === 3 &&
+		state.universe.specialEncounters.cougarDestroyed &&
+		state.views.isDocked
+	) {
+		commander.missionProgressStage = 4;
+		commander.missionsCompletedCount += 1;
+		commander.combatRankPoints = Math.min(65_535, commander.combatRankPoints + 4);
+		triggerDebrief(2);
+	}
+}
+function updateTrumbleLifecycle(state) {
+	const commander = state.commander;
+	const hasFoodCargo = (commander.cargoTonsByCommodity[0] ?? 0) > 0;
+	// Deterministic first acquisition gate after mission progression.
+	if (
+		commander.trumbleCount === 0 &&
+		commander.missionProgressStage >= 3 &&
+		state.views.isDocked &&
+		state.timers.missionTicks % 600 === 0
+	) {
+		commander.trumbleCount = 1;
+		commander.trumbleMood = 60;
+		commander.trumbleVisible = true;
+		return;
+	}
+	if (commander.trumbleCount <= 0) {
+		commander.trumbleCount = 0;
+		commander.trumbleMood = 0;
+		commander.trumbleVisible = false;
+		return;
+	}
+	const growthPeriod = state.views.isDocked ? (hasFoodCargo ? 180 : 360) : hasFoodCargo ? 300 : 480;
+	if (state.timers.frameTicks % growthPeriod === 0) {
+		commander.trumbleCount = clamp(commander.trumbleCount + 1, 0, 64);
+	}
+	const moodDelta = state.views.isDocked ? 1 : -1;
+	commander.trumbleMood = clamp(commander.trumbleMood + moodDelta, 0, 100);
+	commander.trumbleVisible = commander.trumbleCount > 0 && !state.views.inWitchspace;
+}
+function finalizeStep(state) {
+	updateCommanderMissionProgress(state);
+	updateTrumbleLifecycle(state);
+	if (state.timers.hudFlashMs >= 60_000) {
+		state.timers.hudFlashMs -= 60_000;
+	}
+}
 /**
  * Advances local-universe objects and resolves destruction/debris lifecycle.
  */
@@ -715,6 +1218,20 @@ function advanceLocalShipsAndResolve(state, stepMs, destructionRoll) {
 		ship.position.y += ship.velocity.y * dtSeconds;
 		ship.position.z += ship.velocity.z * dtSeconds;
 		if (ship.kind === "ship" && ship.hullStrength <= 0) {
+			if (ship.lastDamagedByPlayer) {
+				applyCommanderKillProgress(state.commander, ship.blueprintId);
+			}
+			if (ship.specialEncounterType === "constrictor") {
+				state.universe.specialEncounters.constrictorDestroyed = true;
+				state.commander.combatRankPoints = Math.min(65_535, state.commander.combatRankPoints + 12);
+			}
+			if (ship.specialEncounterType === "cougar") {
+				state.universe.specialEncounters.cougarDestroyed = true;
+				state.commander.combatRankPoints = Math.min(65_535, state.commander.combatRankPoints + 8);
+			}
+			if (ship.specialEncounterType === "witchspace-raider") {
+				state.commander.legalStatus = clamp(state.commander.legalStatus, 0, 255);
+			}
 			const combinedCount = survivors.length + debrisQueue.length;
 			if (combinedCount < MAX_LOCAL_BUBBLE_OBJECTS) {
 				const cloudSeed = (destructionRoll + ship.slotId) & 0xff;
@@ -758,7 +1275,8 @@ function stepMloopTail(state, stepMs) {
 	}
 	if (state.views.isDocked) {
 		const rechargeScale = stepMs / 16.67;
-		state.flight.energy = clamp(state.flight.energy + 0.08 * rechargeScale, 0, 100);
+		const energyRechargeBase = state.commander.equipment.energyUnit ? 0.14 : 0.08;
+		state.flight.energy = clamp(state.flight.energy + energyRechargeBase * rechargeScale, 0, 100);
 		state.flight.forwardShield = clamp(state.flight.forwardShield + 0.12 * rechargeScale, 0, 100);
 		state.flight.aftShield = clamp(state.flight.aftShield + 0.12 * rechargeScale, 0, 100);
 	}
@@ -868,6 +1386,62 @@ function applyWarpState(state, stepMs, requestWarpToggle) {
 		state.flight.speed = clamp(state.flight.speed, 0, 40);
 	}
 }
+function deriveNextSystemSeed(currentSeed, mixSeed) {
+	const mix = mixSeed & 0xffff;
+	const seed0 = (currentSeed[0] * 1103 + mix * 17 + 0x1234) & 0xffff;
+	const seed1 = (currentSeed[1] * 937 + mix * 29 + 0x2345) & 0xffff;
+	const seed2 = (currentSeed[2] * 761 + mix * 31 + 0x3456) & 0xffff;
+	return [seed0, seed1, seed2];
+}
+function applyHyperspaceTransition(state, spawnRoll) {
+	state.commander.fuelTenths = Math.max(0, state.commander.fuelTenths - 10);
+	const arrivedSeed = [...state.universe.targetSystemSeed];
+	const mixSeed =
+		(state.timers.missionTicks ^ (spawnRoll << 8) ^ state.universe.hyperspaceJumps) & 0xffff;
+	let nextTargetSeed = deriveNextSystemSeed(arrivedSeed, mixSeed);
+	if (
+		nextTargetSeed[0] === arrivedSeed[0] &&
+		nextTargetSeed[1] === arrivedSeed[1] &&
+		nextTargetSeed[2] === arrivedSeed[2]
+	) {
+		nextTargetSeed = deriveNextSystemSeed(arrivedSeed, (mixSeed + 0x11) & 0xffff);
+	}
+	state.universe.currentSystemSeed = arrivedSeed;
+	state.universe.targetSystemSeed = nextTargetSeed;
+	state.universe.hyperspaceJumps += 1;
+	refreshLocalMarket(state);
+	state.views.inWitchspace = false;
+	state.views.inStationSafeZone = false;
+	state.views.isDocked = false;
+	state.flight.stationDistance = 5_200;
+	state.flight.warpEngaged = false;
+	state.flight.warpChargeMs = 0;
+	state.flight.warpFuelAccumulatorMs = 0;
+	state.flight.speed = clamp(state.flight.speed, 18, 36);
+	state.universe.localBubbleShips = [];
+	state.universe.nextShipSlotId = 1;
+	state.timers.spawnCountdownMs = 900;
+}
+function applyAutoHyperspaceTransition(state, spawnRoll) {
+	if (state.views.isDocked || state.views.inWitchspace) {
+		return false;
+	}
+	if (!state.flight.warpEngaged) {
+		return false;
+	}
+	if (state.flight.warpChargeMs < 3_800 || state.flight.speed < 70) {
+		return false;
+	}
+	if (state.commander.fuelTenths < 10) {
+		state.flight.warpEngaged = false;
+		state.flight.warpChargeMs = 0;
+		state.flight.warpFuelAccumulatorMs = 0;
+		state.flight.speed = clamp(state.flight.speed, 0, 40);
+		return false;
+	}
+	applyHyperspaceTransition(state, spawnRoll);
+	return true;
+}
 /**
  * Handle one-step escape pod transition.
  *
@@ -886,6 +1460,142 @@ function applyEscapePodTransition(state, requestEscapePod) {
 	state.flight.warpEngaged = false;
 	state.flight.warpChargeMs = 0;
 	state.flight.warpFuelAccumulatorMs = 0;
+	return true;
+}
+export function getCommodityDefinitions() {
+	return MARKET_COMMODITIES.map((commodity) => ({ ...commodity }));
+}
+export function getEquipmentDefinitions() {
+	return EQUIPMENT_DEFINITIONS.map((definition) => ({ ...definition }));
+}
+export function getCombatRankName(combatRankPoints) {
+	let resolved = COMBAT_RANK_THRESHOLDS[0]?.rank ?? "Harmless";
+	for (const threshold of COMBAT_RANK_THRESHOLDS) {
+		if (combatRankPoints >= threshold.minPoints) {
+			resolved = threshold.rank;
+		}
+	}
+	return resolved;
+}
+export function getMissionProgressLabel(missionProgressStage) {
+	if (missionProgressStage <= 0) {
+		return "No mission";
+	}
+	if (missionProgressStage === 1) {
+		return "Mission offered";
+	}
+	if (missionProgressStage === 2) {
+		return "Mission active";
+	}
+	if (missionProgressStage === 3) {
+		return "Mission complete";
+	}
+	if (missionProgressStage === 4) {
+		return "Special mission complete";
+	}
+	return "Mission complete";
+}
+export function acknowledgeMissionMessages(state) {
+	const hadPending =
+		state.commander.missionBriefingPending || state.commander.missionDebriefPending;
+	if (!hadPending) {
+		return false;
+	}
+	state.commander.missionBriefingPending = false;
+	state.commander.missionDebriefPending = false;
+	state.commander.lastMissionEventTick = state.timers.missionTicks;
+	return true;
+}
+function getEquipmentDefinitionById(id) {
+	const definition = EQUIPMENT_DEFINITIONS.find((candidate) => candidate.id === id);
+	return definition ?? null;
+}
+export function tryPurchaseEquipment(state, equipmentId) {
+	if (!state.views.isDocked) {
+		return false;
+	}
+	const definition = getEquipmentDefinitionById(equipmentId);
+	if (!definition) {
+		return false;
+	}
+	if (state.commander.equipment[definition.key]) {
+		return false;
+	}
+	if (state.commander.creditsCenticredits < definition.priceCenticredits) {
+		return false;
+	}
+	state.commander.creditsCenticredits -= definition.priceCenticredits;
+	state.commander.equipment[definition.key] = true;
+	if (definition.key === "extraCargoBay") {
+		state.commander.cargoHoldCapacityTons = 35;
+	}
+	return true;
+}
+export function getCargoUsedTons(commander) {
+	let used = 0;
+	for (const tons of commander.cargoTonsByCommodity) {
+		used += Math.max(0, Math.floor(tons));
+	}
+	return used;
+}
+export function getCargoFreeTons(commander) {
+	return Math.max(0, commander.cargoHoldCapacityTons - getCargoUsedTons(commander));
+}
+function canTradeCommodityIndex(state, commodityIndex) {
+	return commodityIndex >= 0 && commodityIndex < state.universe.market.commodities.length;
+}
+export function tryBuyCommodity(state, commodityIndex, tons) {
+	if (!state.views.isDocked) {
+		return false;
+	}
+	if (!canTradeCommodityIndex(state, commodityIndex)) {
+		return false;
+	}
+	const requestedTons = Math.max(0, Math.floor(tons));
+	if (requestedTons <= 0) {
+		return false;
+	}
+	const available = state.universe.market.availableTons[commodityIndex] ?? 0;
+	const price = state.universe.market.pricesCenticredits[commodityIndex] ?? 0;
+	if (requestedTons > available || price <= 0) {
+		return false;
+	}
+	if (requestedTons > getCargoFreeTons(state.commander)) {
+		return false;
+	}
+	const totalCost = requestedTons * price;
+	if (state.commander.creditsCenticredits < totalCost) {
+		return false;
+	}
+	state.commander.creditsCenticredits -= totalCost;
+	state.commander.cargoTonsByCommodity[commodityIndex] =
+		(state.commander.cargoTonsByCommodity[commodityIndex] ?? 0) + requestedTons;
+	state.universe.market.availableTons[commodityIndex] = available - requestedTons;
+	return true;
+}
+export function trySellCommodity(state, commodityIndex, tons) {
+	if (!state.views.isDocked) {
+		return false;
+	}
+	if (!canTradeCommodityIndex(state, commodityIndex)) {
+		return false;
+	}
+	const requestedTons = Math.max(0, Math.floor(tons));
+	if (requestedTons <= 0) {
+		return false;
+	}
+	const ownedTons = state.commander.cargoTonsByCommodity[commodityIndex] ?? 0;
+	const price = state.universe.market.pricesCenticredits[commodityIndex] ?? 0;
+	if (requestedTons > ownedTons || price <= 0) {
+		return false;
+	}
+	state.commander.cargoTonsByCommodity[commodityIndex] = ownedTons - requestedTons;
+	state.universe.market.availableTons[commodityIndex] =
+		(state.universe.market.availableTons[commodityIndex] ?? 0) + requestedTons;
+	state.commander.creditsCenticredits = Math.min(
+		0x7fff_ffff,
+		state.commander.creditsCenticredits + requestedTons * price,
+	);
 	return true;
 }
 /**
@@ -914,16 +1624,12 @@ export function stepCanonicalGameState(state, input) {
 	state.timers.hudFlashMs += stepMs;
 	// Launch transition has priority while docked.
 	if (applyLaunchTransition(state, requestLaunch)) {
-		if (state.timers.hudFlashMs >= 60_000) {
-			state.timers.hudFlashMs -= 60_000;
-		}
+		finalizeStep(state);
 		return;
 	}
 	// Escape pod transition takes precedence and immediately exits this step.
 	if (applyEscapePodTransition(state, requestEscapePod)) {
-		if (state.timers.hudFlashMs >= 60_000) {
-			state.timers.hudFlashMs -= 60_000;
-		}
+		finalizeStep(state);
 		return;
 	}
 	// Docked flow currently only runs the minimal MLOOP equivalent.
@@ -933,9 +1639,7 @@ export function stepCanonicalGameState(state, input) {
 		state.flight.stationDistance = 0;
 		state.flow.mainLoopCounter = wrapUint8(state.flow.mainLoopCounter - 1);
 		stepMloopTail(state, stepMs);
-		if (state.timers.hudFlashMs >= 60_000) {
-			state.timers.hudFlashMs -= 60_000;
-		}
+		finalizeStep(state);
 		return;
 	}
 	state.flow.phase = "in-space";
@@ -951,39 +1655,72 @@ export function stepCanonicalGameState(state, input) {
 		controlThrottleAxis,
 	);
 	applyWarpState(state, stepMs, requestWarpToggle);
+	if (applyAutoHyperspaceTransition(state, spawnRoll & 0xff)) {
+		finalizeStep(state);
+		return;
+	}
 	updateStationProximity(state, stepMs);
 	// Docking transition exits in-space flow immediately on success.
 	if (applyDockAttempt(state, requestDockAttempt)) {
-		if (state.timers.hudFlashMs >= 60_000) {
-			state.timers.hudFlashMs -= 60_000;
-		}
+		finalizeStep(state);
 		return;
 	}
+	updateShipHostilityLevels(state);
+	applyShipCombatTactics(state, stepMs, spawnRoll & 0xff);
 	applyEcmState(state, stepMs, requestEcmToggle);
 	applyLaserCombat(state, requestFireLaser, spawnRoll & 0xff);
 	applyMissileCombat(state, stepMs, requestMissileArmToggle, requestMissileFire, spawnRoll & 0xff);
 	// Very early "energy usage" placeholder so timers/flight state interact.
 	const pseudoDrain = state.flight.speed > 30 ? 0.03 : 0.01;
 	state.flight.energy = clamp(state.flight.energy - pseudoDrain * (stepMs / 16.67), 0, 100);
+	if (state.commander.equipment.energyUnit) {
+		const rechargeScale = stepMs / 16.67;
+		state.flight.energy = clamp(state.flight.energy + 0.03 * rechargeScale, 0, 100);
+	}
+	if (
+		state.commander.equipment.fuelScoops &&
+		state.flight.speed >= 18 &&
+		state.timers.frameTicks % 30 === 0
+	) {
+		state.commander.fuelTenths = clamp(state.commander.fuelTenths + 1, 0, 70);
+	}
 	// Spawn placeholder ships at deterministic intervals.
 	const activeShipCount = state.universe.localBubbleShips.filter(
 		(ship) => ship.kind === "ship",
 	).length;
-	if (!state.views.inStationSafeZone && state.timers.spawnCountdownMs <= 0 && activeShipCount < 6) {
+	applyWitchspaceInteractions(state, spawnRoll & 0xff, activeShipCount);
+	const activeShipCountAfterWitchspace = state.universe.localBubbleShips.filter(
+		(ship) => ship.kind === "ship",
+	).length;
+	applySpecialEncounterSpawns(state, spawnRoll & 0xff, activeShipCountAfterWitchspace);
+	const activeShipCountAfterSpecials = state.universe.localBubbleShips.filter(
+		(ship) => ship.kind === "ship",
+	).length;
+	if (
+		!state.views.inStationSafeZone &&
+		state.timers.spawnCountdownMs <= 0 &&
+		activeShipCountAfterSpecials < 6
+	) {
 		spawnPlaceholderShip(state, spawnRoll & 0xff);
 		state.timers.spawnCountdownMs = 850 + (spawnRoll & 0x7f) * 12;
 	}
+	if (
+		state.views.inStationSafeZone &&
+		state.commander.legalStatus >= 40 &&
+		state.timers.spawnCountdownMs <= 0 &&
+		countShipsByRole(state, "police") < 2 &&
+		activeShipCountAfterSpecials < 6
+	) {
+		spawnPlaceholderShip(state, spawnRoll & 0xff, "police");
+		state.timers.spawnCountdownMs = 600 + (spawnRoll & 0x3f) * 6;
+	}
+	updateShipHostilityLevels(state);
 	// Apply incoming hostile damage before resolving object destruction/culling.
 	if (applyIncomingHostileDamage(state, spawnRoll & 0xff)) {
-		if (state.timers.hudFlashMs >= 60_000) {
-			state.timers.hudFlashMs -= 60_000;
-		}
+		finalizeStep(state);
 		return;
 	}
 	advanceLocalShipsAndResolve(state, stepMs, spawnRoll & 0xff);
 	stepMloopTail(state, stepMs);
-	// Keep HUD timer bounded to avoid unbounded floating-point growth.
-	if (state.timers.hudFlashMs >= 60_000) {
-		state.timers.hudFlashMs -= 60_000;
-	}
+	finalizeStep(state);
 }

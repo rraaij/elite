@@ -5,7 +5,8 @@ export type AudioCueId =
 	| "ecm"
 	| "warning"
 	| "dock"
-	| "launch";
+	| "launch"
+	| "trumble";
 
 export type MusicTrackId = "title" | "docking";
 
@@ -32,6 +33,10 @@ export interface AudioCueSnapshotSource {
 				kind: "ship" | "debris";
 			}>;
 		};
+		commander: {
+			trumbleCount: number;
+			trumbleVisible: boolean;
+		};
 	};
 }
 
@@ -42,6 +47,7 @@ export interface AudioCueEdgeState {
 	isDocked: boolean;
 	warningActive: boolean;
 	activeHostileShipCount: number;
+	trumbleCount: number;
 }
 
 export interface AudioCueDiffResult {
@@ -150,6 +156,9 @@ export function deriveAudioCueEdgeState(snapshot: AudioCueSnapshotSource): Audio
 		activeHostileShipCount: snapshot.gameState.universe.localBubbleShips.filter(
 			(ship) => ship.kind === "ship",
 		).length,
+		trumbleCount: snapshot.gameState.commander.trumbleVisible
+			? snapshot.gameState.commander.trumbleCount
+			: 0,
 	};
 }
 
@@ -178,6 +187,9 @@ export function detectAudioCuesFromEdgeStates(
 	}
 	if (previous.isDocked && !current.isDocked) {
 		cues.push("launch");
+	}
+	if (current.trumbleCount > previous.trumbleCount) {
+		cues.push("trumble");
 	}
 
 	let nextLastExplosionCueMs = lastExplosionCueMs;
@@ -314,6 +326,14 @@ const SFX_TABLE: Record<AudioCueId, SfxCueDefinition> = {
 		steps: [
 			{ durationMs: 90, frequencyHz: 460, gain: 0.08, type: "triangle" },
 			{ durationMs: 120, frequencyHz: 360, gain: 0.07, type: "triangle" },
+		],
+	},
+	trumble: {
+		priority: 2,
+		maxSimultaneous: 2,
+		steps: [
+			{ durationMs: 60, frequencyHz: 740, gain: 0.08, type: "triangle" },
+			{ durationMs: 70, frequencyHz: 620, gain: 0.07, type: "triangle" },
 		],
 	},
 };

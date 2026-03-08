@@ -20,8 +20,15 @@ export {
 } from "./saveState";
 export { createEmptySimulation } from "./simulation";
 export {
+	acknowledgeMissionMessages,
 	cloneCanonicalGameState,
 	createCanonicalGameState,
+	getCargoFreeTons,
+	getCargoUsedTons,
+	getCombatRankName,
+	getCommodityDefinitions,
+	getEquipmentDefinitions,
+	getMissionProgressLabel,
 	runBeginEntryPoint,
 	runDeath2EntryPoint,
 	runRes2EntryPoint,
@@ -29,6 +36,9 @@ export {
 	runStartupSequence,
 	runTt170EntryPoint,
 	stepCanonicalGameState,
+	tryBuyCommodity,
+	tryPurchaseEquipment,
+	trySellCommodity,
 } from "./stateModel";
 export {
 	getTimingProfile,

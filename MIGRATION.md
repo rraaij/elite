@@ -129,19 +129,19 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 
 ## Milestone M7: AI, Economy, Missions, and World Systems
 
-- [ ] Phase M7.1: AI and tactics parity.
-- [ ] Step M7.1.1: Port hostility/aggression logic and police/pirate/bounty spawn rules.
-- [ ] Step M7.1.2: Port missile target/lock logic and evasive/combat tactics.
-- [ ] Step M7.1.3: Port special-case behaviors (Constrictor/Cougar events, witchspace interactions).
-- [ ] Phase M7.2: Economy and progression.
-- [ ] Step M7.2.1: Port market pricing/availability and cargo mechanics.
-- [ ] Step M7.2.2: Port equipment purchase/use effects.
-- [ ] Step M7.2.3: Port rank/kill/mission progression logic.
-- [ ] Phase M7.3: Special systems.
-- [ ] Step M7.3.1: Port Trumble lifecycle and rendering/audio hooks.
-- [ ] Step M7.3.2: Port hyperspace and inter-system transitions.
-- [ ] Step M7.3.3: Port full mission brief/debrief flow and triggers.
-- [ ] Exit criteria M7: end-to-end gameplay feature parity for selected baseline variant.
+- [x] Phase M7.1: AI and tactics parity.
+- [x] Step M7.1.1: Port hostility/aggression logic and police/pirate/bounty spawn rules.
+- [x] Step M7.1.2: Port missile target/lock logic and evasive/combat tactics.
+- [x] Step M7.1.3: Port special-case behaviors (Constrictor/Cougar events, witchspace interactions).
+- [x] Phase M7.2: Economy and progression.
+- [x] Step M7.2.1: Port market pricing/availability and cargo mechanics.
+- [x] Step M7.2.2: Port equipment purchase/use effects.
+- [x] Step M7.2.3: Port rank/kill/mission progression logic.
+- [x] Phase M7.3: Special systems.
+- [x] Step M7.3.1: Port Trumble lifecycle and rendering/audio hooks.
+- [x] Step M7.3.2: Port hyperspace and inter-system transitions.
+- [x] Step M7.3.3: Port full mission brief/debrief flow and triggers.
+- [x] Exit criteria M7: end-to-end gameplay feature parity for selected baseline variant.
 
 ## Milestone M8: Audio and Music
 

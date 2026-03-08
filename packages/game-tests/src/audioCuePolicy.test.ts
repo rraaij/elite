@@ -25,6 +25,10 @@ interface AudioCueSnapshotSource {
 		universe: {
 			localBubbleShips: Array<{ kind: "ship" | "debris" }>;
 		};
+		commander: {
+			trumbleCount: number;
+			trumbleVisible: boolean;
+		};
 	};
 }
 
@@ -35,6 +39,7 @@ interface AudioCueEdgeState {
 	isDocked: boolean;
 	warningActive: boolean;
 	activeHostileShipCount: number;
+	trumbleCount: number;
 }
 
 function createCueSnapshotSource(): AudioCueSnapshotSource {
@@ -59,6 +64,10 @@ function createCueSnapshotSource(): AudioCueSnapshotSource {
 			universe: {
 				localBubbleShips: [],
 			},
+			commander: {
+				trumbleCount: 0,
+				trumbleVisible: false,
+			},
 		},
 	};
 }
@@ -71,6 +80,7 @@ function emptyEdgeState(): AudioCueEdgeState {
 		isDocked: false,
 		warningActive: false,
 		activeHostileShipCount: 0,
+		trumbleCount: 0,
 	};
 }
 
@@ -99,6 +109,7 @@ describe("audio cue policy", () => {
 			isDocked: true,
 			warningActive: true,
 			activeHostileShipCount: 0,
+			trumbleCount: 0,
 		};
 
 		const diff = detectAudioCuesFromEdgeStates(previous, current, 1000, -Infinity);
@@ -113,6 +124,7 @@ describe("audio cue policy", () => {
 		const current: AudioCueEdgeState = {
 			...emptyEdgeState(),
 			isDocked: false,
+			trumbleCount: 0,
 		};
 
 		const diff = detectAudioCuesFromEdgeStates(previous, current, 1000, -Infinity);
@@ -127,6 +139,7 @@ describe("audio cue policy", () => {
 		const current: AudioCueEdgeState = {
 			...emptyEdgeState(),
 			activeHostileShipCount: 2,
+			trumbleCount: 0,
 		};
 
 		const first = detectAudioCuesFromEdgeStates(previous, current, 2000, -Infinity);
@@ -136,5 +149,19 @@ describe("audio cue policy", () => {
 		const suppressed = detectAudioCuesFromEdgeStates(previous, current, 2100, 2000);
 		expect(suppressed.cues).not.toContain("explosion");
 		expect(suppressed.nextLastExplosionCueMs).toBe(2000);
+	});
+
+	it("emits trumble cue when visible trumble population grows", () => {
+		const previous: AudioCueEdgeState = {
+			...emptyEdgeState(),
+			trumbleCount: 2,
+		};
+		const current: AudioCueEdgeState = {
+			...emptyEdgeState(),
+			trumbleCount: 3,
+		};
+
+		const diff = detectAudioCuesFromEdgeStates(previous, current, 3000, -Infinity);
+		expect(diff.cues).toContain("trumble");
 	});
 });

@@ -26,6 +26,10 @@ function createCueSnapshotSource() {
 			universe: {
 				localBubbleShips: [],
 			},
+			commander: {
+				trumbleCount: 0,
+				trumbleVisible: false,
+			},
 		},
 	};
 }
@@ -37,6 +41,7 @@ function emptyEdgeState() {
 		isDocked: false,
 		warningActive: false,
 		activeHostileShipCount: 0,
+		trumbleCount: 0,
 	};
 }
 describe("audio cue policy", () => {
@@ -62,6 +67,7 @@ describe("audio cue policy", () => {
 			isDocked: true,
 			warningActive: true,
 			activeHostileShipCount: 0,
+			trumbleCount: 0,
 		};
 		const diff = detectAudioCuesFromEdgeStates(previous, current, 1000, -Infinity);
 		expect(diff.cues).toEqual(["laser", "missileLock", "ecm", "warning", "dock"]);
@@ -74,6 +80,7 @@ describe("audio cue policy", () => {
 		const current = {
 			...emptyEdgeState(),
 			isDocked: false,
+			trumbleCount: 0,
 		};
 		const diff = detectAudioCuesFromEdgeStates(previous, current, 1000, -Infinity);
 		expect(diff.cues).toEqual(["launch"]);
@@ -86,6 +93,7 @@ describe("audio cue policy", () => {
 		const current = {
 			...emptyEdgeState(),
 			activeHostileShipCount: 2,
+			trumbleCount: 0,
 		};
 		const first = detectAudioCuesFromEdgeStates(previous, current, 2000, -Infinity);
 		expect(first.cues).toContain("explosion");
@@ -93,5 +101,17 @@ describe("audio cue policy", () => {
 		const suppressed = detectAudioCuesFromEdgeStates(previous, current, 2100, 2000);
 		expect(suppressed.cues).not.toContain("explosion");
 		expect(suppressed.nextLastExplosionCueMs).toBe(2000);
+	});
+	it("emits trumble cue when visible trumble population grows", () => {
+		const previous = {
+			...emptyEdgeState(),
+			trumbleCount: 2,
+		};
+		const current = {
+			...emptyEdgeState(),
+			trumbleCount: 3,
+		};
+		const diff = detectAudioCuesFromEdgeStates(previous, current, 3000, -Infinity);
+		expect(diff.cues).toContain("trumble");
 	});
 });

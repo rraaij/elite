@@ -82,22 +82,22 @@ const REPLAY_KEYFRAMES: ReadonlyArray<{
  * Populated after first baseline capture.
  */
 const EXPECTED_CHECKPOINT_DIGESTS: ReadonlyArray<{ tick: number; digest: string }> = [
-	{ tick: 60, digest: "ee863e6b" },
-	{ tick: 120, digest: "edaddd6a" },
-	{ tick: 180, digest: "330161db" },
-	{ tick: 240, digest: "eaf5a3c9" },
-	{ tick: 300, digest: "1fc9859c" },
-	{ tick: 360, digest: "a198c47c" },
-	{ tick: 420, digest: "fe763bdb" },
-	{ tick: 480, digest: "90127191" },
-	{ tick: 540, digest: "efc150b9" },
-	{ tick: 600, digest: "97b25c54" },
+	{ tick: 60, digest: "87bd4a14" },
+	{ tick: 120, digest: "172bb19f" },
+	{ tick: 180, digest: "df70ba54" },
+	{ tick: 240, digest: "861d4df8" },
+	{ tick: 300, digest: "dcd425e4" },
+	{ tick: 360, digest: "97c70f68" },
+	{ tick: 420, digest: "fcbfd9d5" },
+	{ tick: 480, digest: "bf210b5a" },
+	{ tick: 540, digest: "08bce03a" },
+	{ tick: 600, digest: "eddb1cf5" },
 ] as const;
 
 /**
  * Final digest for the full scripted replay.
  */
-const EXPECTED_FINAL_DIGEST = "97b25c54";
+const EXPECTED_FINAL_DIGEST = "eddb1cf5";
 
 function createNeutralControls(): PilotControlState {
 	return {

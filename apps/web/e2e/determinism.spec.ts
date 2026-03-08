@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const EXPECTED_HASH = "b65ab03d";
+const EXPECTED_HASH = "a12ae05b";
 
 test("determinism probe hash stays stable", async ({ page }) => {
 	await page.goto("/?debug=0");

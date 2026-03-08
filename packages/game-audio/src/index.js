@@ -30,6 +30,9 @@ export function deriveAudioCueEdgeState(snapshot) {
 		activeHostileShipCount: snapshot.gameState.universe.localBubbleShips.filter(
 			(ship) => ship.kind === "ship",
 		).length,
+		trumbleCount: snapshot.gameState.commander.trumbleVisible
+			? snapshot.gameState.commander.trumbleCount
+			: 0,
 	};
 }
 export function detectAudioCuesFromEdgeStates(previous, current, nowMs, lastExplosionCueMs) {
@@ -51,6 +54,9 @@ export function detectAudioCuesFromEdgeStates(previous, current, nowMs, lastExpl
 	}
 	if (previous.isDocked && !current.isDocked) {
 		cues.push("launch");
+	}
+	if (current.trumbleCount > previous.trumbleCount) {
+		cues.push("trumble");
 	}
 	let nextLastExplosionCueMs = lastExplosionCueMs;
 	if (
@@ -174,6 +180,14 @@ const SFX_TABLE = {
 		steps: [
 			{ durationMs: 90, frequencyHz: 460, gain: 0.08, type: "triangle" },
 			{ durationMs: 120, frequencyHz: 360, gain: 0.07, type: "triangle" },
+		],
+	},
+	trumble: {
+		priority: 2,
+		maxSimultaneous: 2,
+		steps: [
+			{ durationMs: 60, frequencyHz: 740, gain: 0.08, type: "triangle" },
+			{ durationMs: 70, frequencyHz: 620, gain: 0.07, type: "triangle" },
 		],
 	},
 };

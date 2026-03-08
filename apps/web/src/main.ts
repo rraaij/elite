@@ -6,14 +6,23 @@ import {
 	resolveMusicTrackForSnapshot,
 } from "../../../packages/game-audio/src/index";
 import {
+	acknowledgeMissionMessages,
 	createEmptySimulation,
 	createFixedStepRunner,
 	deserializeLegacyCommanderFile,
 	deserializeSaveState,
+	getCargoFreeTons,
+	getCargoUsedTons,
+	getCombatRankName,
+	getEquipmentDefinitions,
+	getMissionProgressLabel,
 	type PilotControlState,
 	resolveTimingProfile,
 	serializeSaveState,
 	type TimingProfileId,
+	tryBuyCommodity,
+	tryPurchaseEquipment,
+	trySellCommodity,
 } from "../../../packages/game-core/src/index";
 import {
 	DEFAULT_SCENARIOS,
@@ -217,7 +226,7 @@ interface RuntimeDataContext {
 	dataPack: RuntimeDataPack;
 }
 
-type DockedUiFlow = "status" | "charts" | "inventory" | "market" | "prompts";
+type DockedUiFlow = "status" | "charts" | "inventory" | "market" | "equipment" | "prompts";
 
 interface DeterminismProbeResult {
 	hash: string;
@@ -1194,7 +1203,14 @@ dockedUiTabs.className = "runtime-docked-tabs";
 const dockedUiContent = document.createElement("pre");
 dockedUiContent.className = "runtime-docked-content";
 const dockedUiButtons = new Map<DockedUiFlow, HTMLButtonElement>();
-for (const flowKey of ["status", "charts", "inventory", "market", "prompts"] as const) {
+for (const flowKey of [
+	"status",
+	"charts",
+	"inventory",
+	"market",
+	"equipment",
+	"prompts",
+] as const) {
 	const button = document.createElement("button");
 	button.className = "runtime-overlay-tab";
 	button.type = "button";
@@ -1382,6 +1398,16 @@ let lastAutosaveMs = 0;
 let tokenPreviewText = "-";
 let missionPreviewPages: string[] = ["-"];
 let activeDockedFlow: DockedUiFlow = "status";
+let activeMarketCommodityIndex = 0;
+let activeEquipmentIndex = 0;
+let previousMarketPrevPressed = false;
+let previousMarketNextPressed = false;
+let previousMarketBuyPressed = false;
+let previousMarketSellPressed = false;
+let previousEquipmentPrevPressed = false;
+let previousEquipmentNextPressed = false;
+let previousEquipmentBuyPressed = false;
+let previousMissionAckPressed = false;
 let serviceWorkerStatusMessage = ENABLE_SERVICE_WORKER
 	? "sw: pending registration"
 	: "sw: disabled";
@@ -1426,6 +1452,14 @@ function formatDockedUiContent(
 				`Fuel (tenths): ${snapshot.gameState.commander.fuelTenths}`,
 				`Legal Status: ${snapshot.gameState.commander.legalStatus}`,
 				`Combat Rank Pts: ${snapshot.gameState.commander.combatRankPoints}`,
+				`Combat Rank: ${getCombatRankName(snapshot.gameState.commander.combatRankPoints)}`,
+				`Kills: ${snapshot.gameState.commander.killCount}`,
+				`Mission Stage: ${getMissionProgressLabel(snapshot.gameState.commander.missionProgressStage)}`,
+				`Missions Completed: ${snapshot.gameState.commander.missionsCompletedCount}`,
+				`Mission Briefing Pending: ${snapshot.gameState.commander.missionBriefingPending}`,
+				`Mission Debrief Pending: ${snapshot.gameState.commander.missionDebriefPending}`,
+				`Trumbles: ${snapshot.gameState.commander.trumbleCount}`,
+				`Trumble Mood: ${snapshot.gameState.commander.trumbleMood}`,
 			].join("\n");
 		case "charts":
 			return [
@@ -1433,6 +1467,7 @@ function formatDockedUiContent(
 				`Galaxy #: ${snapshot.gameState.universe.galaxyNumber}`,
 				`Current Seed: ${snapshot.gameState.universe.currentSystemSeed.join("/")}`,
 				`Target Seed: ${snapshot.gameState.universe.targetSystemSeed.join("/")}`,
+				`Hyperspace Jumps: ${snapshot.gameState.universe.hyperspaceJumps}`,
 				`Variant: ${runtimeDataContext?.resolvedVariantId ?? "-"}`,
 			].join("\n");
 		case "inventory":
@@ -1443,18 +1478,46 @@ function formatDockedUiContent(
 				`Energy: ${snapshot.gameState.flight.energy.toFixed(1)}`,
 				`Forward Shield: ${snapshot.gameState.flight.forwardShield.toFixed(1)}`,
 				`Aft Shield: ${snapshot.gameState.flight.aftShield.toFixed(1)}`,
+				`Trumble Visible: ${snapshot.gameState.commander.trumbleVisible}`,
 			].join("\n");
 		case "market": {
-			const seed = snapshot.rngState >>> 0;
-			const commodity = (name: string, bias: number) =>
-				`${name.padEnd(10, " ")} ${(((seed >>> bias) % 97) + 3).toString().padStart(3, " ")} cr`;
+			const market = snapshot.gameState.universe.market;
+			const usedTons = getCargoUsedTons(snapshot.gameState.commander);
+			const freeTons = getCargoFreeTons(snapshot.gameState.commander);
+			const commodityLines = market.commodities.map((commodity, index) => {
+				const selectedMarker = index === activeMarketCommodityIndex ? ">" : " ";
+				const price = (market.pricesCenticredits[index] ?? 0).toString().padStart(4, " ");
+				const stock = (market.availableTons[index] ?? 0).toString().padStart(2, " ");
+				const owned = (snapshot.gameState.commander.cargoTonsByCommodity[index] ?? 0)
+					.toString()
+					.padStart(2, " ");
+				return `${selectedMarker}${commodity.name.padEnd(12, " ")} ${price}cc stk:${stock} own:${owned}`;
+			});
 			return [
-				"MARKET",
-				commodity("Food", 3),
-				commodity("Textiles", 5),
-				commodity("Ore", 7),
-				commodity("Alloys", 11),
-				commodity("Computers", 13),
+				`MARKET (eco=${market.economyLevel} fluc=${market.fluctuation})`,
+				`Hold: ${usedTons}/${snapshot.gameState.commander.cargoHoldCapacityTons}t free:${freeTons}t`,
+				...commodityLines,
+				"",
+				"[ / ] = select commodity",
+				"B = buy 1t, V = sell 1t",
+			].join("\n");
+		}
+		case "equipment": {
+			const equipmentDefinitions = getEquipmentDefinitions();
+			const equipmentLines = equipmentDefinitions.map((definition, index) => {
+				const selectedMarker = index === activeEquipmentIndex ? ">" : " ";
+				const installed = snapshot.gameState.commander.equipment[definition.key] ? "YES" : "NO ";
+				return `${selectedMarker}${definition.name.padEnd(18, " ")} ${definition.priceCenticredits
+					.toString()
+					.padStart(6, " ")}cc  ${installed}`;
+			});
+			return [
+				"EQUIPMENT",
+				`Credits: ${snapshot.gameState.commander.creditsCenticredits}cc`,
+				...equipmentLines,
+				"",
+				"; / ' = select equipment",
+				"Enter = purchase selected",
 			].join("\n");
 		}
 		case "prompts":
@@ -1463,9 +1526,44 @@ function formatDockedUiContent(
 				"[L]aunch from station",
 				"[D]ock request when in-space",
 				"[M]/[N] missile controls",
+				"[[ and ]] select market commodity",
+				"[B]/[V] buy/sell 1t",
+				"[;] / ['] select equipment",
+				"[Enter] purchase equipment",
+				"[J] acknowledge mission brief/debrief",
 				"[F6]/[F7] save/load",
 				"[Esc] menu",
 			].join("\n");
+	}
+}
+
+function updateMissionFlowPreview(snapshot: ReturnType<typeof simulation.snapshot>): void {
+	const commander = snapshot.gameState.commander;
+	if (commander.missionBriefingPending) {
+		const missionId = commander.missionBriefingId ?? 0;
+		missionPreviewPages = renderMissionTextPages(
+			`MISSION BRIEFING ${missionId}\nProceed to objective and report back.`,
+			{
+				lineWidth: 28,
+				maxLinesPerPage: 6,
+			},
+		).map(
+			(page, index) => `P${index + 1}${page.pausedAfter ? "*" : " "} ${page.lines.join(" / ")}`,
+		);
+		return;
+	}
+
+	if (commander.missionDebriefPending) {
+		const missionId = commander.missionDebriefId ?? 0;
+		missionPreviewPages = renderMissionTextPages(
+			`MISSION DEBRIEF ${missionId}\nSuccess logged. Commander standing updated.`,
+			{
+				lineWidth: 28,
+				maxLinesPerPage: 6,
+			},
+		).map(
+			(page, index) => `P${index + 1}${page.pausedAfter ? "*" : " "} ${page.lines.join(" / ")}`,
+		);
 	}
 }
 
@@ -2091,6 +2189,107 @@ function updateDebugPanel(
 	].join("\n");
 }
 
+function applyDockedMarketHotkeys(
+	keyboardSnapshot: ReturnType<ReturnType<typeof createKeyboardInput>["snapshot"]>,
+): void {
+	const pressed = new Set(keyboardSnapshot.pressedKeys);
+	const marketPrevPressed = pressed.has("BracketLeft");
+	const marketNextPressed = pressed.has("BracketRight");
+	const marketBuyPressed = pressed.has("KeyB");
+	const marketSellPressed = pressed.has("KeyV");
+	const equipmentPrevPressed = pressed.has("Semicolon");
+	const equipmentNextPressed = pressed.has("Quote");
+	const equipmentBuyPressed = pressed.has("Enter");
+
+	const snapshot = simulation.snapshot();
+	const isDocked = snapshot.gameState.views.isDocked || snapshot.gameState.flow.phase === "docked";
+	if (!isDocked) {
+		previousMarketPrevPressed = marketPrevPressed;
+		previousMarketNextPressed = marketNextPressed;
+		previousMarketBuyPressed = marketBuyPressed;
+		previousMarketSellPressed = marketSellPressed;
+		previousEquipmentPrevPressed = equipmentPrevPressed;
+		previousEquipmentNextPressed = equipmentNextPressed;
+		previousEquipmentBuyPressed = equipmentBuyPressed;
+		return;
+	}
+
+	const commodityCount = snapshot.gameState.universe.market.commodities.length;
+	const equipmentDefinitions = getEquipmentDefinitions();
+	const equipmentCount = equipmentDefinitions.length;
+
+	if (commodityCount > 0) {
+		activeMarketCommodityIndex =
+			((activeMarketCommodityIndex % commodityCount) + commodityCount) % commodityCount;
+
+		if (marketPrevPressed && !previousMarketPrevPressed) {
+			activeMarketCommodityIndex =
+				(activeMarketCommodityIndex + commodityCount - 1) % commodityCount;
+		}
+		if (marketNextPressed && !previousMarketNextPressed) {
+			activeMarketCommodityIndex = (activeMarketCommodityIndex + 1) % commodityCount;
+		}
+	}
+
+	if (equipmentCount > 0) {
+		activeEquipmentIndex =
+			((activeEquipmentIndex % equipmentCount) + equipmentCount) % equipmentCount;
+		if (equipmentPrevPressed && !previousEquipmentPrevPressed) {
+			activeEquipmentIndex = (activeEquipmentIndex + equipmentCount - 1) % equipmentCount;
+		}
+		if (equipmentNextPressed && !previousEquipmentNextPressed) {
+			activeEquipmentIndex = (activeEquipmentIndex + 1) % equipmentCount;
+		}
+	}
+
+	let didMutate = false;
+	if (marketBuyPressed && !previousMarketBuyPressed) {
+		didMutate = tryBuyCommodity(snapshot.gameState, activeMarketCommodityIndex, 1) || didMutate;
+	}
+	if (marketSellPressed && !previousMarketSellPressed) {
+		didMutate = trySellCommodity(snapshot.gameState, activeMarketCommodityIndex, 1) || didMutate;
+	}
+	if (equipmentBuyPressed && !previousEquipmentBuyPressed && equipmentCount > 0) {
+		const equipment = equipmentDefinitions[activeEquipmentIndex];
+		if (equipment) {
+			didMutate = tryPurchaseEquipment(snapshot.gameState, equipment.id) || didMutate;
+		}
+	}
+	if (didMutate) {
+		simulation.restore(snapshot);
+	}
+
+	previousMarketPrevPressed = marketPrevPressed;
+	previousMarketNextPressed = marketNextPressed;
+	previousMarketBuyPressed = marketBuyPressed;
+	previousMarketSellPressed = marketSellPressed;
+	previousEquipmentPrevPressed = equipmentPrevPressed;
+	previousEquipmentNextPressed = equipmentNextPressed;
+	previousEquipmentBuyPressed = equipmentBuyPressed;
+}
+
+function applyMissionFlowHotkeys(
+	keyboardSnapshot: ReturnType<ReturnType<typeof createKeyboardInput>["snapshot"]>,
+): void {
+	const pressed = new Set(keyboardSnapshot.pressedKeys);
+	const acknowledgePressed = pressed.has("KeyJ");
+	const snapshot = simulation.snapshot();
+	const isDocked = snapshot.gameState.views.isDocked || snapshot.gameState.flow.phase === "docked";
+
+	if (!isDocked) {
+		previousMissionAckPressed = acknowledgePressed;
+		return;
+	}
+
+	if (acknowledgePressed && !previousMissionAckPressed) {
+		if (acknowledgeMissionMessages(snapshot.gameState)) {
+			simulation.restore(snapshot);
+		}
+	}
+
+	previousMissionAckPressed = acknowledgePressed;
+}
+
 /**
  * Main browser frame callback:
  * - advances fixed-step simulation,
@@ -2098,19 +2297,26 @@ function updateDebugPanel(
  * - updates migration debug diagnostics.
  */
 function animate(nowMs: number): void {
+	const keyboardSnapshot = keyboard.snapshot();
+	const gamepadSnapshot = gamepad.snapshot();
+	const touchSnapshot = touchInput.snapshot();
+
 	// Push latest control state into the deterministic simulation before stepping.
 	if (!paused) {
 		const mergedControls = mergePilotControls([
-			mapKeyboardSnapshotToPilotControls(keyboard.snapshot(), keyBindings),
-			mapGamepadSnapshotToPilotControls(gamepad.snapshot()),
-			mapTouchSnapshotToPilotControls(touchInput.snapshot()),
+			mapKeyboardSnapshotToPilotControls(keyboardSnapshot, keyBindings),
+			mapGamepadSnapshotToPilotControls(gamepadSnapshot),
+			mapTouchSnapshotToPilotControls(touchSnapshot),
 		]);
 		simulation.setPilotControls(mergedControls);
+		applyDockedMarketHotkeys(keyboardSnapshot);
+		applyMissionFlowHotkeys(keyboardSnapshot);
 	}
 
 	const frameNowMs = paused ? (pauseFrameNowMs ?? nowMs) : nowMs;
 	const metrics = runner.frame(frameNowMs);
 	const snapshot = simulation.snapshot();
+	updateMissionFlowPreview(snapshot);
 	const shouldShowDockedPanel =
 		snapshot.gameState.views.isDocked || snapshot.gameState.flow.phase === "docked";
 	dockedUiPanel.hidden = !shouldShowDockedPanel;
