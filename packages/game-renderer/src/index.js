@@ -11,6 +11,7 @@ export {
 	resolveScannerContactColor,
 } from "./cockpitColorBehavior";
 export { createCockpitHudModel } from "./cockpitHud";
+export { parseMissionTextTokens, renderMissionTextPages } from "./missionTextRenderer";
 export { drawCircle, drawLine, plotPixel } from "./rasterPrimitives";
 export {
 	createCockpitTextLayerModel,

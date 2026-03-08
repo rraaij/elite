@@ -15,3 +15,4 @@ export {
 	WORDS_XOR_KEY,
 } from "./binaryParsers";
 export { DEFAULT_SCENARIOS, getScenarioById } from "./scenarios";
+export { expandIantokTokenText, expandWordsTokenText } from "./tokenExpansion";

@@ -17,8 +17,16 @@ export type { FixedStepRunner, FixedStepRunnerConfig, FrameMetrics } from "./fix
 export { createFixedStepRunner } from "./fixedStepRunner";
 export type { DeterministicRng } from "./random";
 export { createDeterministicRng } from "./random";
-export type { AnySupportedSimulationSnapshot, SaveStateEnvelope } from "./saveState";
-export { deserializeSaveState, serializeSaveState } from "./saveState";
+export type {
+	AnySupportedSimulationSnapshot,
+	LegacyCommanderImportResult,
+	SaveStateEnvelope,
+} from "./saveState";
+export {
+	deserializeLegacyCommanderFile,
+	deserializeSaveState,
+	serializeSaveState,
+} from "./saveState";
 export type {
 	LegacySimulationSnapshot,
 	PilotControlState,

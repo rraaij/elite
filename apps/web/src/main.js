@@ -7,22 +7,33 @@ import {
 import {
 	createEmptySimulation,
 	createFixedStepRunner,
+	deserializeLegacyCommanderFile,
 	deserializeSaveState,
 	resolveTimingProfile,
 	serializeSaveState,
 } from "../../../packages/game-core/src/index";
-import { DEFAULT_SCENARIOS, getScenarioById } from "../../../packages/game-data/src/index";
-import { createKeyboardInput } from "../../../packages/game-input/src/index";
-import { createCanvasRenderer } from "../../../packages/game-renderer/src/index";
+import {
+	DEFAULT_SCENARIOS,
+	expandIantokTokenText,
+	getScenarioById,
+} from "../../../packages/game-data/src/index";
+import { createGamepadInput, createKeyboardInput } from "../../../packages/game-input/src/index";
+import {
+	createCanvasRenderer,
+	renderMissionTextPages,
+} from "../../../packages/game-renderer/src/index";
 import "./styles.css";
 const SAVE_SLOT_PRIMARY_KEY = "elite.migration.save-slot-primary";
 const SAVE_SLOT_BACKUP_KEY = "elite.migration.save-slot-backup";
 const AUDIO_SETTINGS_KEY = "elite.migration.audio-settings-v1";
+const KEY_BINDINGS_KEY = "elite.migration.key-bindings-v1";
+const ACCESSIBILITY_SETTINGS_KEY = "elite.migration.accessibility-settings-v1";
 const FIRST_RUN_GUIDE_KEY = "elite.migration.first-run-guide-v1";
 const AUTOSAVE_INTERVAL_MS = 15_000;
 const DEFAULT_VARIANT_ID = import.meta.env.VITE_DEFAULT_VARIANT_ID || "gma85-ntsc";
 const DATA_BASE_PATH = import.meta.env.VITE_DATA_BASE_PATH || "/game-data";
 const ENABLE_SERVICE_WORKER = import.meta.env.PROD && import.meta.env.VITE_DISABLE_SW !== "1";
+const ENABLE_LEGACY_COMMANDER_IMPORT = import.meta.env.VITE_ENABLE_LEGACY_COMMANDER_IMPORT === "1";
 /**
  * Converts runtime JSON blueprints into renderer-ready minimal blueprints.
  *
@@ -115,13 +126,241 @@ async function loadRuntimeData(desiredVariantId) {
 function fixed(value, digits = 2) {
 	return value.toFixed(digits).padStart(8, " ");
 }
+const DEFAULT_KEY_BINDINGS = {
+	rollLeft: "ArrowLeft",
+	rollRight: "ArrowRight",
+	pitchUp: "ArrowUp",
+	pitchDown: "ArrowDown",
+	throttleUp: "ShiftLeft",
+	throttleDown: "ControlLeft",
+	warpToggle: "KeyH",
+	escapePod: "KeyE",
+	fireLaser: "Space",
+	missileArm: "KeyM",
+	missileFire: "KeyN",
+	ecmToggle: "KeyX",
+	dockAttempt: "KeyL",
+	launch: "KeyP",
+	saveSnapshot: "F6",
+	loadSnapshot: "F7",
+	menuToggle: "Escape",
+	pauseToggle: "KeyP",
+};
+const KEY_BINDING_FIELDS = [
+	{ key: "rollLeft", label: "Roll Left" },
+	{ key: "rollRight", label: "Roll Right" },
+	{ key: "pitchUp", label: "Pitch Up" },
+	{ key: "pitchDown", label: "Pitch Down" },
+	{ key: "throttleUp", label: "Throttle +" },
+	{ key: "throttleDown", label: "Throttle -" },
+	{ key: "fireLaser", label: "Fire Laser" },
+	{ key: "missileArm", label: "Missile Arm" },
+	{ key: "missileFire", label: "Missile Fire" },
+	{ key: "ecmToggle", label: "ECM" },
+	{ key: "warpToggle", label: "Warp Toggle" },
+	{ key: "escapePod", label: "Escape Pod" },
+	{ key: "dockAttempt", label: "Dock Attempt" },
+	{ key: "launch", label: "Launch" },
+	{ key: "saveSnapshot", label: "Save Snapshot" },
+	{ key: "loadSnapshot", label: "Load Snapshot" },
+	{ key: "menuToggle", label: "Menu Toggle" },
+	{ key: "pauseToggle", label: "Pause Toggle" },
+];
+const DEFAULT_ACCESSIBILITY_SETTINGS = {
+	highContrast: false,
+	largeText: false,
+	reducedFlashing: false,
+	leftHandedTouch: false,
+};
+function loadKeyBindingsFromLocalStorage() {
+	const payload = window.localStorage.getItem(KEY_BINDINGS_KEY);
+	if (!payload) {
+		return { ...DEFAULT_KEY_BINDINGS };
+	}
+	try {
+		const parsed = JSON.parse(payload);
+		const merged = { ...DEFAULT_KEY_BINDINGS };
+		for (const field of KEY_BINDING_FIELDS) {
+			const candidate = parsed[field.key];
+			if (typeof candidate === "string" && candidate.length) {
+				merged[field.key] = candidate;
+			}
+		}
+		return merged;
+	} catch {
+		return { ...DEFAULT_KEY_BINDINGS };
+	}
+}
+function saveKeyBindingsToLocalStorage(bindings) {
+	window.localStorage.setItem(KEY_BINDINGS_KEY, JSON.stringify(bindings));
+}
+function loadAccessibilitySettingsFromLocalStorage() {
+	const payload = window.localStorage.getItem(ACCESSIBILITY_SETTINGS_KEY);
+	if (!payload) {
+		return { ...DEFAULT_ACCESSIBILITY_SETTINGS };
+	}
+	try {
+		const parsed = JSON.parse(payload);
+		return {
+			highContrast: Boolean(parsed.highContrast),
+			largeText: Boolean(parsed.largeText),
+			reducedFlashing: Boolean(parsed.reducedFlashing),
+			leftHandedTouch: Boolean(parsed.leftHandedTouch),
+		};
+	} catch {
+		return { ...DEFAULT_ACCESSIBILITY_SETTINGS };
+	}
+}
+function saveAccessibilitySettingsToLocalStorage(settings) {
+	window.localStorage.setItem(ACCESSIBILITY_SETTINGS_KEY, JSON.stringify(settings));
+}
+function formatKeyCode(code) {
+	if (code.startsWith("Key")) {
+		return code.slice(3).toUpperCase();
+	}
+	if (code.startsWith("Digit")) {
+		return code.slice(5);
+	}
+	if (code.startsWith("Arrow")) {
+		return code.slice(5).toUpperCase();
+	}
+	if (code === "Space") {
+		return "SPACE";
+	}
+	return code.toUpperCase();
+}
 /**
  * Map keyboard snapshot values into simulation pilot controls.
  *
  * Keeping this mapping in one function makes key-to-control behavior explicit
  * and easy to adjust as we expand the input abstraction.
  */
-function mapKeyboardSnapshotToPilotControls(snapshot) {
+function mapKeyboardSnapshotToPilotControls(snapshot, bindings) {
+	const pressed = new Set(snapshot.pressedKeys);
+	const isPressed = (code) => {
+		if (pressed.has(code)) {
+			return true;
+		}
+		if (code === "ShiftLeft" || code === "ShiftRight") {
+			return pressed.has("ShiftLeft") || pressed.has("ShiftRight");
+		}
+		if (code === "ControlLeft" || code === "ControlRight") {
+			return pressed.has("ControlLeft") || pressed.has("ControlRight");
+		}
+		if (code === "AltLeft" || code === "AltRight") {
+			return pressed.has("AltLeft") || pressed.has("AltRight");
+		}
+		return false;
+	};
+	return {
+		rollAxis: (isPressed(bindings.rollRight) ? 1 : 0) - (isPressed(bindings.rollLeft) ? 1 : 0),
+		pitchAxis: (isPressed(bindings.pitchUp) ? 1 : 0) - (isPressed(bindings.pitchDown) ? 1 : 0),
+		throttleAxis:
+			(isPressed(bindings.throttleUp) ? 1 : 0) - (isPressed(bindings.throttleDown) ? 1 : 0),
+		warpTogglePressed: isPressed(bindings.warpToggle),
+		escapePodPressed: isPressed(bindings.escapePod),
+		fireLaserPressed: isPressed(bindings.fireLaser),
+		missileArmTogglePressed: isPressed(bindings.missileArm),
+		missileFirePressed: isPressed(bindings.missileFire),
+		ecmTogglePressed: isPressed(bindings.ecmToggle),
+		dockAttemptPressed: isPressed(bindings.dockAttempt),
+		launchPressed: isPressed(bindings.launch),
+	};
+}
+/**
+ * Resolve active timing profile for fixed-step scheduling.
+ *
+ * `auto` mode infers PAL/NTSC from the currently selected variant id.
+ */
+function resolveActiveTimingProfile(config) {
+	return resolveTimingProfile(config.timing, config.variantId);
+}
+function clamp01(value) {
+	return Math.min(1, Math.max(0, value));
+}
+function createDefaultPilotControls() {
+	return {
+		rollAxis: 0,
+		pitchAxis: 0,
+		throttleAxis: 0,
+		warpTogglePressed: false,
+		escapePodPressed: false,
+		fireLaserPressed: false,
+		missileArmTogglePressed: false,
+		missileFirePressed: false,
+		ecmTogglePressed: false,
+		dockAttemptPressed: false,
+		launchPressed: false,
+	};
+}
+function fnv1a32(value) {
+	let hash = 0x811c9dc5;
+	for (let index = 0; index < value.length; index += 1) {
+		hash ^= value.charCodeAt(index);
+		hash = Math.imul(hash, 0x01000193) >>> 0;
+	}
+	return hash.toString(16).padStart(8, "0");
+}
+function runDeterminismProbe() {
+	const scenarioId = "empty";
+	const seed = 0x12345678;
+	const stepMs = 16.67;
+	const totalFrames = 600;
+	const probeSimulation = createEmptySimulation({
+		scenarioId,
+		seed,
+	});
+	const controls = createDefaultPilotControls();
+	const keyframes = new Map([
+		[0, { throttleAxis: 1, rollAxis: 0.3, pitchAxis: 0.1 }],
+		[2, { warpTogglePressed: true }],
+		[3, { warpTogglePressed: false }],
+		[60, { throttleAxis: 0, rollAxis: 0, pitchAxis: 0 }],
+		[80, { missileArmTogglePressed: true }],
+		[81, { missileArmTogglePressed: false }],
+		[110, { fireLaserPressed: true }],
+		[160, { fireLaserPressed: false }],
+		[200, { ecmTogglePressed: true }],
+		[201, { ecmTogglePressed: false }],
+		[260, { dockAttemptPressed: true }],
+		[261, { dockAttemptPressed: false }],
+		[330, { launchPressed: true }],
+		[331, { launchPressed: false }],
+	]);
+	const signatureLines = [];
+	for (let frame = 0; frame < totalFrames; frame += 1) {
+		const updates = keyframes.get(frame);
+		if (updates) {
+			Object.assign(controls, updates);
+		}
+		probeSimulation.setPilotControls(controls);
+		probeSimulation.step(stepMs);
+		if ((frame + 1) % 40 === 0 || frame === totalFrames - 1) {
+			const snapshot = probeSimulation.snapshot();
+			signatureLines.push(
+				[
+					snapshot.tick,
+					snapshot.rngState,
+					Math.round(snapshot.playerHeadingDeg * 100),
+					Math.round(snapshot.playerSpeed * 100),
+					Math.round(snapshot.gameState.flight.stationDistance * 10),
+					snapshot.gameState.universe.localBubbleShips.length,
+					snapshot.gameState.views.isDocked ? 1 : 0,
+					snapshot.gameState.flight.missileCount,
+					snapshot.gameState.commander.creditsCenticredits,
+				].join("|"),
+			);
+		}
+	}
+	const finalSnapshot = probeSimulation.snapshot();
+	return {
+		hash: fnv1a32(signatureLines.join(";")),
+		tick: finalSnapshot.tick,
+		scenarioId: finalSnapshot.scenarioId,
+		seed,
+	};
+}
+function mapGamepadSnapshotToPilotControls(snapshot) {
 	return {
 		rollAxis: snapshot.rollAxis,
 		pitchAxis: snapshot.pitchAxis,
@@ -136,16 +375,265 @@ function mapKeyboardSnapshotToPilotControls(snapshot) {
 		launchPressed: snapshot.launchPressed,
 	};
 }
-/**
- * Resolve active timing profile for fixed-step scheduling.
- *
- * `auto` mode infers PAL/NTSC from the currently selected variant id.
- */
-function resolveActiveTimingProfile(config) {
-	return resolveTimingProfile(config.timing, config.variantId);
+function mapTouchSnapshotToPilotControls(snapshot) {
+	return {
+		rollAxis: snapshot.rollAxis,
+		pitchAxis: snapshot.pitchAxis,
+		throttleAxis: snapshot.throttleAxis,
+		warpTogglePressed: snapshot.warpTogglePressed,
+		escapePodPressed: snapshot.escapePodPressed,
+		fireLaserPressed: snapshot.fireLaserPressed,
+		missileArmTogglePressed: snapshot.missileArmTogglePressed,
+		missileFirePressed: snapshot.missileFirePressed,
+		ecmTogglePressed: snapshot.ecmTogglePressed,
+		dockAttemptPressed: snapshot.dockAttemptPressed,
+		launchPressed: snapshot.launchPressed,
+	};
 }
-function clamp01(value) {
-	return Math.min(1, Math.max(0, value));
+function mergePilotControls(inputs) {
+	const aggregate = createDefaultPilotControls();
+	for (const input of inputs) {
+		aggregate.rollAxis += input.rollAxis;
+		aggregate.pitchAxis += input.pitchAxis;
+		aggregate.throttleAxis += input.throttleAxis;
+		aggregate.warpTogglePressed ||= input.warpTogglePressed;
+		aggregate.escapePodPressed ||= input.escapePodPressed;
+		aggregate.fireLaserPressed ||= input.fireLaserPressed;
+		aggregate.missileArmTogglePressed ||= input.missileArmTogglePressed;
+		aggregate.missileFirePressed ||= input.missileFirePressed;
+		aggregate.ecmTogglePressed ||= input.ecmTogglePressed;
+		aggregate.dockAttemptPressed ||= input.dockAttemptPressed;
+		aggregate.launchPressed ||= input.launchPressed;
+	}
+	aggregate.rollAxis = Math.min(1, Math.max(-1, aggregate.rollAxis));
+	aggregate.pitchAxis = Math.min(1, Math.max(-1, aggregate.pitchAxis));
+	aggregate.throttleAxis = Math.min(1, Math.max(-1, aggregate.throttleAxis));
+	return aggregate;
+}
+function createTouchInputOverlay(target) {
+	const touchState = createDefaultPilotControls();
+	const root = document.createElement("div");
+	root.className = "runtime-touch-controls";
+	root.setAttribute("aria-label", "Touch controls");
+	const movementCluster = document.createElement("div");
+	movementCluster.className = "runtime-touch-cluster";
+	const actionCluster = document.createElement("div");
+	actionCluster.className = "runtime-touch-cluster";
+	const releaseAllControls = () => {
+		touchState.rollAxis = 0;
+		touchState.pitchAxis = 0;
+		touchState.throttleAxis = 0;
+		touchState.warpTogglePressed = false;
+		touchState.escapePodPressed = false;
+		touchState.fireLaserPressed = false;
+		touchState.missileArmTogglePressed = false;
+		touchState.missileFirePressed = false;
+		touchState.ecmTogglePressed = false;
+		touchState.dockAttemptPressed = false;
+		touchState.launchPressed = false;
+	};
+	const bindHoldButton = (label, className, onDown, onUp = () => undefined) => {
+		const button = document.createElement("button");
+		button.className = `runtime-touch-button ${className}`;
+		button.type = "button";
+		button.textContent = label;
+		const press = (event) => {
+			event.preventDefault();
+			button.setPointerCapture(event.pointerId);
+			onDown();
+		};
+		const release = (event) => {
+			event.preventDefault();
+			onUp();
+		};
+		button.addEventListener("pointerdown", press);
+		button.addEventListener("pointerup", release);
+		button.addEventListener("pointercancel", release);
+		button.addEventListener("lostpointercapture", onUp);
+		return button;
+	};
+	movementCluster.append(
+		bindHoldButton(
+			"UP",
+			"runtime-touch-axis",
+			() => {
+				touchState.pitchAxis = 1;
+			},
+			() => {
+				touchState.pitchAxis = 0;
+			},
+		),
+		bindHoldButton(
+			"DN",
+			"runtime-touch-axis",
+			() => {
+				touchState.pitchAxis = -1;
+			},
+			() => {
+				touchState.pitchAxis = 0;
+			},
+		),
+		bindHoldButton(
+			"LT",
+			"runtime-touch-axis",
+			() => {
+				touchState.rollAxis = -1;
+			},
+			() => {
+				touchState.rollAxis = 0;
+			},
+		),
+		bindHoldButton(
+			"RT",
+			"runtime-touch-axis",
+			() => {
+				touchState.rollAxis = 1;
+			},
+			() => {
+				touchState.rollAxis = 0;
+			},
+		),
+		bindHoldButton(
+			"TH+",
+			"runtime-touch-axis",
+			() => {
+				touchState.throttleAxis = 1;
+			},
+			() => {
+				touchState.throttleAxis = 0;
+			},
+		),
+		bindHoldButton(
+			"TH-",
+			"runtime-touch-axis",
+			() => {
+				touchState.throttleAxis = -1;
+			},
+			() => {
+				touchState.throttleAxis = 0;
+			},
+		),
+	);
+	actionCluster.append(
+		bindHoldButton(
+			"FIRE",
+			"runtime-touch-action runtime-touch-primary",
+			() => {
+				touchState.fireLaserPressed = true;
+			},
+			() => {
+				touchState.fireLaserPressed = false;
+			},
+		),
+		bindHoldButton(
+			"ARM",
+			"runtime-touch-action",
+			() => {
+				touchState.missileArmTogglePressed = true;
+			},
+			() => {
+				touchState.missileArmTogglePressed = false;
+			},
+		),
+		bindHoldButton(
+			"MSL",
+			"runtime-touch-action",
+			() => {
+				touchState.missileFirePressed = true;
+			},
+			() => {
+				touchState.missileFirePressed = false;
+			},
+		),
+		bindHoldButton(
+			"ECM",
+			"runtime-touch-action",
+			() => {
+				touchState.ecmTogglePressed = true;
+			},
+			() => {
+				touchState.ecmTogglePressed = false;
+			},
+		),
+		bindHoldButton(
+			"WARP",
+			"runtime-touch-action",
+			() => {
+				touchState.warpTogglePressed = true;
+			},
+			() => {
+				touchState.warpTogglePressed = false;
+			},
+		),
+		bindHoldButton(
+			"DOCK",
+			"runtime-touch-action",
+			() => {
+				touchState.dockAttemptPressed = true;
+			},
+			() => {
+				touchState.dockAttemptPressed = false;
+			},
+		),
+		bindHoldButton(
+			"LCH",
+			"runtime-touch-action",
+			() => {
+				touchState.launchPressed = true;
+			},
+			() => {
+				touchState.launchPressed = false;
+			},
+		),
+		bindHoldButton(
+			"ESC",
+			"runtime-touch-action",
+			() => {
+				touchState.escapePodPressed = true;
+			},
+			() => {
+				touchState.escapePodPressed = false;
+			},
+		),
+	);
+	root.append(movementCluster, actionCluster);
+	target.addEventListener("blur", releaseAllControls);
+	return {
+		root,
+		snapshot() {
+			return {
+				active: Boolean(
+					touchState.rollAxis ||
+						touchState.pitchAxis ||
+						touchState.throttleAxis ||
+						touchState.warpTogglePressed ||
+						touchState.escapePodPressed ||
+						touchState.fireLaserPressed ||
+						touchState.missileArmTogglePressed ||
+						touchState.missileFirePressed ||
+						touchState.ecmTogglePressed ||
+						touchState.dockAttemptPressed ||
+						touchState.launchPressed,
+				),
+				rollAxis: touchState.rollAxis,
+				pitchAxis: touchState.pitchAxis,
+				throttleAxis: touchState.throttleAxis,
+				warpTogglePressed: touchState.warpTogglePressed,
+				escapePodPressed: touchState.escapePodPressed,
+				fireLaserPressed: touchState.fireLaserPressed,
+				missileArmTogglePressed: touchState.missileArmTogglePressed,
+				missileFirePressed: touchState.missileFirePressed,
+				ecmTogglePressed: touchState.ecmTogglePressed,
+				dockAttemptPressed: touchState.dockAttemptPressed,
+				launchPressed: touchState.launchPressed,
+			};
+		},
+		dispose() {
+			target.removeEventListener("blur", releaseAllControls);
+			releaseAllControls();
+			root.remove();
+		},
+	};
 }
 function loadAudioSettingsFromLocalStorage() {
 	const fallback = {
@@ -175,11 +663,14 @@ function saveAudioSettingsToLocalStorage(settings) {
 }
 const runtimeConfig = getRuntimeConfigFromUrl(new URL(window.location.href));
 const audioSettings = loadAudioSettingsFromLocalStorage();
+const keyBindings = loadKeyBindingsFromLocalStorage();
+const accessibilitySettings = loadAccessibilitySettingsFromLocalStorage();
 const activeTimingProfile = resolveActiveTimingProfile(runtimeConfig);
 const root = document.querySelector("#app");
 if (!root) {
 	throw new Error("Missing #app root element.");
 }
+const appRoot = root;
 // Build a simple panel layout so we can keep debug tools visible during migration.
 const layout = document.createElement("main");
 layout.className = "runtime-layout";
@@ -258,6 +749,82 @@ musicVolumeRange.max = "100";
 musicVolumeRange.step = "1";
 musicVolumeRange.value = String(Math.round(audioSettings.musicVolume * 100));
 musicVolumeField.append(musicVolumeRange);
+const accessibilityField = document.createElement("fieldset");
+accessibilityField.className = "runtime-fieldset";
+const accessibilityLegend = document.createElement("legend");
+accessibilityLegend.className = "runtime-fieldset-title";
+accessibilityLegend.textContent = "Accessibility";
+accessibilityField.append(accessibilityLegend);
+const highContrastRow = document.createElement("label");
+highContrastRow.className = "runtime-toggle-row";
+const highContrastToggle = document.createElement("input");
+highContrastToggle.className = "runtime-checkbox";
+highContrastToggle.type = "checkbox";
+highContrastToggle.checked = accessibilitySettings.highContrast;
+const highContrastText = document.createElement("span");
+highContrastText.textContent = "High Contrast";
+highContrastRow.append(highContrastToggle, highContrastText);
+const largeTextRow = document.createElement("label");
+largeTextRow.className = "runtime-toggle-row";
+const largeTextToggle = document.createElement("input");
+largeTextToggle.className = "runtime-checkbox";
+largeTextToggle.type = "checkbox";
+largeTextToggle.checked = accessibilitySettings.largeText;
+const largeTextText = document.createElement("span");
+largeTextText.textContent = "Large Text";
+largeTextRow.append(largeTextToggle, largeTextText);
+const reducedFlashRow = document.createElement("label");
+reducedFlashRow.className = "runtime-toggle-row";
+const reducedFlashToggle = document.createElement("input");
+reducedFlashToggle.className = "runtime-checkbox";
+reducedFlashToggle.type = "checkbox";
+reducedFlashToggle.checked = accessibilitySettings.reducedFlashing;
+const reducedFlashText = document.createElement("span");
+reducedFlashText.textContent = "Reduced Flashing";
+reducedFlashRow.append(reducedFlashToggle, reducedFlashText);
+const leftHandedTouchRow = document.createElement("label");
+leftHandedTouchRow.className = "runtime-toggle-row";
+const leftHandedTouchToggle = document.createElement("input");
+leftHandedTouchToggle.className = "runtime-checkbox";
+leftHandedTouchToggle.type = "checkbox";
+leftHandedTouchToggle.checked = accessibilitySettings.leftHandedTouch;
+const leftHandedTouchText = document.createElement("span");
+leftHandedTouchText.textContent = "Left-Handed Touch Layout";
+leftHandedTouchRow.append(leftHandedTouchToggle, leftHandedTouchText);
+accessibilityField.append(highContrastRow, largeTextRow, reducedFlashRow, leftHandedTouchRow);
+const keyBindingsField = document.createElement("fieldset");
+keyBindingsField.className = "runtime-fieldset";
+const keyBindingsLegend = document.createElement("legend");
+keyBindingsLegend.className = "runtime-fieldset-title";
+keyBindingsLegend.textContent = "Key Remapping";
+const keyBindingsHint = document.createElement("p");
+keyBindingsHint.className = "runtime-note";
+keyBindingsHint.textContent = "Select an action, then press a key.";
+const keyBindingsGrid = document.createElement("div");
+keyBindingsGrid.className = "runtime-keybindings-grid";
+const keyBindingButtons = new Map();
+for (const field of KEY_BINDING_FIELDS) {
+	const label = document.createElement("span");
+	label.className = "runtime-keybinding-label";
+	label.textContent = field.label;
+	const button = document.createElement("button");
+	button.className = "runtime-keybinding-button";
+	button.type = "button";
+	button.setAttribute("aria-label", `Bind ${field.label}`);
+	button.textContent = formatKeyCode(keyBindings[field.key]);
+	keyBindingButtons.set(field.key, button);
+	keyBindingsGrid.append(label, button);
+}
+const keyBindingsResetButton = document.createElement("button");
+keyBindingsResetButton.className = "runtime-button";
+keyBindingsResetButton.type = "button";
+keyBindingsResetButton.textContent = "Reset Key Bindings";
+keyBindingsField.append(
+	keyBindingsLegend,
+	keyBindingsHint,
+	keyBindingsGrid,
+	keyBindingsResetButton,
+);
 /**
  * Timing options are fixed and local, so we can populate them eagerly.
  */
@@ -280,16 +847,45 @@ saveButton.textContent = "Save Snapshot (F6)";
 const loadButton = document.createElement("button");
 loadButton.className = "runtime-button";
 loadButton.textContent = "Load Snapshot (F7)";
+const exportButton = document.createElement("button");
+exportButton.className = "runtime-button";
+exportButton.textContent = "Export Snapshot";
+const importButton = document.createElement("button");
+importButton.className = "runtime-button";
+importButton.textContent = "Import Snapshot";
 const menuButton = document.createElement("button");
 menuButton.className = "runtime-button";
 menuButton.textContent = "Menu (Esc)";
 const pauseButton = document.createElement("button");
 pauseButton.className = "runtime-button";
 pauseButton.textContent = "Pause";
-actionBar.append(saveButton, loadButton, menuButton, pauseButton);
+actionBar.append(saveButton, loadButton, exportButton, importButton, menuButton, pauseButton);
+const importSnapshotInput = document.createElement("input");
+importSnapshotInput.type = "file";
+importSnapshotInput.accept = ".json,.snapshot,application/json,text/plain";
+importSnapshotInput.hidden = true;
 const debugPanel = document.createElement("pre");
 debugPanel.className = "runtime-debug";
 debugPanel.hidden = !runtimeConfig.debug;
+const dockedUiPanel = document.createElement("section");
+dockedUiPanel.className = "runtime-docked-panel";
+const dockedUiTitle = document.createElement("h3");
+dockedUiTitle.className = "runtime-docked-title";
+dockedUiTitle.textContent = "Docked Text Flows";
+const dockedUiTabs = document.createElement("div");
+dockedUiTabs.className = "runtime-docked-tabs";
+const dockedUiContent = document.createElement("pre");
+dockedUiContent.className = "runtime-docked-content";
+const dockedUiButtons = new Map();
+for (const flowKey of ["status", "charts", "inventory", "market", "prompts"]) {
+	const button = document.createElement("button");
+	button.className = "runtime-overlay-tab";
+	button.type = "button";
+	button.textContent = flowKey.toUpperCase();
+	dockedUiButtons.set(flowKey, button);
+	dockedUiTabs.append(button);
+}
+dockedUiPanel.append(dockedUiTitle, dockedUiTabs, dockedUiContent);
 const overlay = document.createElement("section");
 overlay.className = "runtime-overlay";
 overlay.hidden = true;
@@ -316,22 +912,35 @@ helpPane.className = "runtime-overlay-pane";
 const helpText = document.createElement("pre");
 helpText.className = "runtime-help-text";
 helpText.textContent = [
-	"Key Help",
+	"Input Help",
 	"",
-	"Roll: Left / Right",
-	"Pitch: Up / Down",
-	"Throttle: W / S",
+	"Keyboard",
+	"Roll: A/D or Left/Right",
+	"Pitch: W/S or Up/Down",
+	"Throttle: Shift / Ctrl",
 	"Fire Laser: Space",
 	"Missile Arm: M",
 	"Missile Fire: N",
-	"ECM: E",
-	"Warp Toggle: J",
-	"Dock Attempt: D",
-	"Launch: L",
+	"ECM: X",
+	"Warp Toggle: H",
+	"Escape Pod: E",
+	"Dock Attempt: L",
+	"Launch: P",
+	"",
+	"Gamepad (default mapping)",
+	"Steer: Left Stick",
+	"Throttle: Triggers",
+	"Fire: A  Arm: B  Missile: X  ECM: Y",
+	"Warp: LB  Dock: RB  Escape: Back  Launch: Start",
+	"",
+	"Touch",
+	"Use on-screen controls in mobile layout.",
+	"Keyboard bindings can be remapped in Settings.",
 	"Save Snapshot: F6",
 	"Load Snapshot: F7",
+	"Export/Import: sidebar buttons",
 	"Menu: Esc",
-	"Pause: P",
+	"Pause: P (keyboard)",
 ].join("\n");
 helpPane.append(helpText);
 const overlayActions = document.createElement("div");
@@ -353,7 +962,7 @@ onboardingTitle.textContent = "Quick Start";
 const onboardingText = document.createElement("p");
 onboardingText.className = "runtime-onboarding-text";
 onboardingText.textContent =
-	"Use Arrow keys to steer, W/S throttle, Space to fire, M/N for missiles, E for ECM, and Esc for menu.";
+	"Use Arrow keys to steer, Shift/Ctrl throttle, Space to fire, M/N for missiles, X for ECM, and Esc for menu.";
 const onboardingDoneButton = document.createElement("button");
 onboardingDoneButton.className = "runtime-button";
 onboardingDoneButton.type = "button";
@@ -362,11 +971,30 @@ onboardingCard.append(onboardingTitle, onboardingText, onboardingDoneButton);
 settingsPane.append(onboardingCard);
 overlayPanel.append(overlayTitle, overlayTabs, settingsPane, helpPane, overlayActions);
 overlay.append(overlayPanel);
-sidebar.append(title, subtitle, dataStatus, variantField, timingField, actionBar, debugPanel);
-settingsPane.append(muteField, masterVolumeField, sfxVolumeField, musicVolumeField);
+sidebar.append(
+	title,
+	subtitle,
+	dataStatus,
+	variantField,
+	timingField,
+	actionBar,
+	importSnapshotInput,
+	dockedUiPanel,
+	debugPanel,
+);
+settingsPane.append(
+	muteField,
+	masterVolumeField,
+	sfxVolumeField,
+	musicVolumeField,
+	accessibilityField,
+	keyBindingsField,
+);
 layout.append(canvasPanel, sidebar);
 root.append(layout);
 root.append(overlay);
+const touchInput = createTouchInputOverlay(window);
+canvasPanel.append(touchInput.root);
 const simulation = createEmptySimulation({
 	scenarioId: runtimeConfig.scenarioId,
 	seed: runtimeConfig.seed,
@@ -376,6 +1004,7 @@ const runner = createFixedStepRunner({
 	stepMs: activeTimingProfile.stepMs,
 	maxCatchUpSteps: activeTimingProfile.maxCatchUpSteps,
 });
+window.__ELITE_DETERMINISM_PROBE__ = runDeterminismProbe;
 // Mutable blueprint map hydrated from generated data-pack JSON.
 // The renderer reads through this resolver every frame so it can start rendering
 // wireframes immediately after data load, without recreating renderer instance.
@@ -391,6 +1020,7 @@ const renderer = createCanvasRenderer({
 	},
 });
 const keyboard = createKeyboardInput(window);
+const gamepad = createGamepadInput(window);
 const audio = createGameAudioEngine({
 	initialVolume: audioSettings.masterVolume,
 	initialSfxVolume: audioSettings.sfxVolume,
@@ -409,6 +1039,9 @@ let activeOverlayTab = "settings";
 let onboardingAcknowledged = window.localStorage.getItem(FIRST_RUN_GUIDE_KEY) === "1";
 let saveStatusMessage = "save: idle";
 let lastAutosaveMs = 0;
+let tokenPreviewText = "-";
+let missionPreviewPages = ["-"];
+let activeDockedFlow = "status";
 let serviceWorkerStatusMessage = ENABLE_SERVICE_WORKER
 	? "sw: pending registration"
 	: "sw: disabled";
@@ -418,6 +1051,76 @@ const perfStats = {
 	overBudgetFrames: 0,
 	lastFps: 0,
 };
+let listeningForBinding = null;
+function applyAccessibilitySettings(settings) {
+	appRoot.classList.toggle("runtime-accessibility-large", settings.largeText);
+	appRoot.classList.toggle("runtime-accessibility-high-contrast", settings.highContrast);
+	appRoot.classList.toggle("runtime-accessibility-reduced-flash", settings.reducedFlashing);
+	appRoot.classList.toggle("runtime-touch-left-handed", settings.leftHandedTouch);
+}
+function updateDockedUiButtons() {
+	for (const [flowKey, button] of dockedUiButtons.entries()) {
+		button.dataset.active = flowKey === activeDockedFlow ? "true" : "false";
+	}
+}
+for (const [flowKey, button] of dockedUiButtons.entries()) {
+	button.addEventListener("click", () => {
+		activeDockedFlow = flowKey;
+		updateDockedUiButtons();
+	});
+}
+updateDockedUiButtons();
+function formatDockedUiContent(flow, snapshot) {
+	switch (flow) {
+		case "status":
+			return [
+				"COMMANDER STATUS",
+				`Credits (cc): ${snapshot.gameState.commander.creditsCenticredits}`,
+				`Fuel (tenths): ${snapshot.gameState.commander.fuelTenths}`,
+				`Legal Status: ${snapshot.gameState.commander.legalStatus}`,
+				`Combat Rank Pts: ${snapshot.gameState.commander.combatRankPoints}`,
+			].join("\n");
+		case "charts":
+			return [
+				"CHARTS",
+				`Galaxy #: ${snapshot.gameState.universe.galaxyNumber}`,
+				`Current Seed: ${snapshot.gameState.universe.currentSystemSeed.join("/")}`,
+				`Target Seed: ${snapshot.gameState.universe.targetSystemSeed.join("/")}`,
+				`Variant: ${runtimeDataContext?.resolvedVariantId ?? "-"}`,
+			].join("\n");
+		case "inventory":
+			return [
+				"INVENTORY",
+				`Missiles: ${snapshot.gameState.flight.missileCount}`,
+				`Missile Armed: ${snapshot.gameState.flight.missileArmed}`,
+				`Energy: ${snapshot.gameState.flight.energy.toFixed(1)}`,
+				`Forward Shield: ${snapshot.gameState.flight.forwardShield.toFixed(1)}`,
+				`Aft Shield: ${snapshot.gameState.flight.aftShield.toFixed(1)}`,
+			].join("\n");
+		case "market": {
+			const seed = snapshot.rngState >>> 0;
+			const commodity = (name, bias) =>
+				`${name.padEnd(10, " ")} ${(((seed >>> bias) % 97) + 3).toString().padStart(3, " ")} cr`;
+			return [
+				"MARKET",
+				commodity("Food", 3),
+				commodity("Textiles", 5),
+				commodity("Ore", 7),
+				commodity("Alloys", 11),
+				commodity("Computers", 13),
+			].join("\n");
+		}
+		case "prompts":
+			return [
+				"PROMPTS",
+				"[L]aunch from station",
+				"[D]ock request when in-space",
+				"[M]/[N] missile controls",
+				"[F6]/[F7] save/load",
+				"[Esc] menu",
+			].join("\n");
+	}
+}
 function applyAudioSettings(settings) {
 	audio.setMasterVolume(settings.masterVolume);
 	audio.setSfxVolume(settings.sfxVolume);
@@ -425,6 +1128,7 @@ function applyAudioSettings(settings) {
 	audio.setMuted(settings.muted);
 }
 applyAudioSettings(audioSettings);
+applyAccessibilitySettings(accessibilitySettings);
 function updateOverlayTabUi() {
 	const settingsActive = activeOverlayTab === "settings";
 	settingsPane.hidden = !settingsActive;
@@ -483,6 +1187,54 @@ musicVolumeRange.addEventListener("input", () => {
 	audioSettings.musicVolume = Number(musicVolumeRange.value) / 100;
 	audio.setMusicVolume(audioSettings.musicVolume);
 	saveAudioSettingsToLocalStorage(audioSettings);
+});
+function refreshKeyBindingButtons() {
+	for (const field of KEY_BINDING_FIELDS) {
+		const button = keyBindingButtons.get(field.key);
+		if (!button) {
+			continue;
+		}
+		const isActiveCapture = listeningForBinding === field.key;
+		button.textContent = isActiveCapture ? "Press Key..." : formatKeyCode(keyBindings[field.key]);
+		button.dataset.capture = isActiveCapture ? "true" : "false";
+	}
+}
+for (const field of KEY_BINDING_FIELDS) {
+	const button = keyBindingButtons.get(field.key);
+	if (!button) {
+		continue;
+	}
+	button.addEventListener("click", () => {
+		listeningForBinding = field.key;
+		refreshKeyBindingButtons();
+	});
+}
+keyBindingsResetButton.addEventListener("click", () => {
+	Object.assign(keyBindings, DEFAULT_KEY_BINDINGS);
+	saveKeyBindingsToLocalStorage(keyBindings);
+	listeningForBinding = null;
+	refreshKeyBindingButtons();
+});
+refreshKeyBindingButtons();
+highContrastToggle.addEventListener("change", () => {
+	accessibilitySettings.highContrast = highContrastToggle.checked;
+	applyAccessibilitySettings(accessibilitySettings);
+	saveAccessibilitySettingsToLocalStorage(accessibilitySettings);
+});
+largeTextToggle.addEventListener("change", () => {
+	accessibilitySettings.largeText = largeTextToggle.checked;
+	applyAccessibilitySettings(accessibilitySettings);
+	saveAccessibilitySettingsToLocalStorage(accessibilitySettings);
+});
+reducedFlashToggle.addEventListener("change", () => {
+	accessibilitySettings.reducedFlashing = reducedFlashToggle.checked;
+	applyAccessibilitySettings(accessibilitySettings);
+	saveAccessibilitySettingsToLocalStorage(accessibilitySettings);
+});
+leftHandedTouchToggle.addEventListener("change", () => {
+	accessibilitySettings.leftHandedTouch = leftHandedTouchToggle.checked;
+	applyAccessibilitySettings(accessibilitySettings);
+	saveAccessibilitySettingsToLocalStorage(accessibilitySettings);
 });
 settingsTabButton.addEventListener("click", () => {
 	activeOverlayTab = "settings";
@@ -595,10 +1347,74 @@ function loadSnapshotFromLocalStorage() {
 	}
 	saveStatusMessage = "save: both primary and backup are invalid";
 }
+function exportSnapshotToFile() {
+	try {
+		const payload = serializeSaveState(simulation.snapshot());
+		const blob = new Blob([payload], { type: "application/json" });
+		const url = URL.createObjectURL(blob);
+		const anchor = document.createElement("a");
+		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+		anchor.href = url;
+		anchor.download = `elite-migration-snapshot-${timestamp}.json`;
+		anchor.click();
+		URL.revokeObjectURL(url);
+		saveStatusMessage = "save: snapshot exported";
+	} catch (error) {
+		saveStatusMessage = `save: export failed (${error instanceof Error ? error.message : String(error)})`;
+	}
+}
+async function importSnapshotFromFile(file) {
+	const bytes = new Uint8Array(await file.arrayBuffer());
+	const decoder = new TextDecoder();
+	const payload = decoder.decode(bytes);
+	try {
+		const envelope = deserializeSaveState(payload);
+		simulation.restore(envelope.snapshot);
+		const serialized = serializeSaveState(simulation.snapshot());
+		window.localStorage.setItem(SAVE_SLOT_BACKUP_KEY, serialized);
+		window.localStorage.setItem(SAVE_SLOT_PRIMARY_KEY, serialized);
+		saveStatusMessage = "save: imported snapshot and updated storage";
+		return;
+	} catch {
+		// Fall through to optional legacy importer.
+	}
+	if (!ENABLE_LEGACY_COMMANDER_IMPORT) {
+		saveStatusMessage = "save: import failed (invalid snapshot format)";
+		return;
+	}
+	try {
+		const legacy = deserializeLegacyCommanderFile(bytes);
+		const nextSnapshot = simulation.snapshot();
+		nextSnapshot.gameState.commander.creditsCenticredits = legacy.commander.creditsCenticredits;
+		nextSnapshot.gameState.commander.fuelTenths = legacy.commander.fuelTenths;
+		nextSnapshot.gameState.commander.legalStatus = legacy.commander.legalStatus;
+		nextSnapshot.gameState.commander.combatRankPoints = legacy.commander.combatRankPoints;
+		nextSnapshot.gameState.flight.missileCount = legacy.flight.missileCount;
+		simulation.restore(nextSnapshot);
+		const serialized = serializeSaveState(simulation.snapshot());
+		window.localStorage.setItem(SAVE_SLOT_BACKUP_KEY, serialized);
+		window.localStorage.setItem(SAVE_SLOT_PRIMARY_KEY, serialized);
+		saveStatusMessage = `save: imported legacy commander (${legacy.sourceFormat})`;
+	} catch (error) {
+		saveStatusMessage = `save: import failed (${error instanceof Error ? error.message : String(error)})`;
+	}
+}
 saveButton.addEventListener("click", () => {
 	saveSnapshotToLocalStorage();
 });
 loadButton.addEventListener("click", loadSnapshotFromLocalStorage);
+exportButton.addEventListener("click", exportSnapshotToFile);
+importButton.addEventListener("click", () => {
+	importSnapshotInput.click();
+});
+importSnapshotInput.addEventListener("change", async () => {
+	const file = importSnapshotInput.files?.[0];
+	if (!file) {
+		return;
+	}
+	await importSnapshotFromFile(file);
+	importSnapshotInput.value = "";
+});
 /**
  * Rebuild one URL search param then reload page.
  *
@@ -625,15 +1441,28 @@ timingSelect.addEventListener("change", () => {
 	reloadWithUrlParam("timing", selectedTiming);
 });
 window.addEventListener("keydown", (event) => {
-	if (event.code === "F6") {
+	if (listeningForBinding) {
+		event.preventDefault();
+		if (event.code === "Escape") {
+			listeningForBinding = null;
+			refreshKeyBindingButtons();
+			return;
+		}
+		keyBindings[listeningForBinding] = event.code;
+		saveKeyBindingsToLocalStorage(keyBindings);
+		listeningForBinding = null;
+		refreshKeyBindingButtons();
+		return;
+	}
+	if (event.code === keyBindings.saveSnapshot) {
 		event.preventDefault();
 		saveSnapshotToLocalStorage();
 	}
-	if (event.code === "F7") {
+	if (event.code === keyBindings.loadSnapshot) {
 		event.preventDefault();
 		loadSnapshotFromLocalStorage();
 	}
-	if (event.code === "Escape") {
+	if (event.code === keyBindings.menuToggle) {
 		event.preventDefault();
 		if (menuOpen) {
 			closeMenu();
@@ -641,7 +1470,7 @@ window.addEventListener("keydown", (event) => {
 			openMenu("settings");
 		}
 	}
-	if (event.code === "KeyP") {
+	if (event.code === keyBindings.pauseToggle) {
 		event.preventDefault();
 		setPaused(!paused);
 	}
@@ -660,6 +1489,51 @@ async function initializeRuntimeDataUi() {
 			titleBytes: runtimeDataContext.dataPack.audio.theme.bytes,
 			dockingBytes: runtimeDataContext.dataPack.audio.comudat.bytes,
 		});
+		tokenPreviewText = expandIantokTokenText(
+			0,
+			{
+				words: runtimeDataContext.dataPack.words,
+				iantok: runtimeDataContext.dataPack.iantok,
+			},
+			{
+				maxDepth: 4,
+				maxOutputLength: 160,
+			},
+		)
+			.replace(/\s+/g, " ")
+			.trim()
+			.slice(0, 60);
+		const missionSeed = [
+			expandIantokTokenText(
+				0,
+				{
+					words: runtimeDataContext.dataPack.words,
+					iantok: runtimeDataContext.dataPack.iantok,
+				},
+				{
+					maxDepth: 3,
+					maxOutputLength: 96,
+				},
+			),
+			"<PAUSE>",
+			expandIantokTokenText(
+				1,
+				{
+					words: runtimeDataContext.dataPack.words,
+					iantok: runtimeDataContext.dataPack.iantok,
+				},
+				{
+					maxDepth: 3,
+					maxOutputLength: 96,
+				},
+			),
+		].join(" ");
+		missionPreviewPages = renderMissionTextPages(missionSeed, {
+			lineWidth: 28,
+			maxLinesPerPage: 6,
+		}).map(
+			(page, index) => `P${index + 1}${page.pausedAfter ? "*" : " "} ${page.lines.join(" / ")}`,
+		);
 		syncMusicTrack(simulation.snapshot());
 		variantSelect.replaceChildren();
 		for (const variant of runtimeDataContext.manifest.variants) {
@@ -680,6 +1554,8 @@ async function initializeRuntimeDataUi() {
 		wireframeBlueprintMap = new Map();
 		audio.stopMusic();
 		activeMusicTrackId = null;
+		tokenPreviewText = "-";
+		missionPreviewPages = ["-"];
 		variantSelect.replaceChildren();
 		const fallback = document.createElement("option");
 		fallback.value = runtimeConfig.variantId;
@@ -702,6 +1578,8 @@ function updateDebugPanel(nowMs, frameElapsedMs, simulatedSteps, wasClamped) {
 	}
 	const simSnapshot = simulation.snapshot();
 	const inputSnapshot = keyboard.snapshot();
+	const gamepadSnapshot = gamepad.snapshot();
+	const touchSnapshot = touchInput.snapshot();
 	const variantSummary =
 		runtimeDataContext?.manifest.variants.find(
 			(variant) => variant.variantId === runtimeDataContext?.resolvedVariantId,
@@ -750,6 +1628,9 @@ function updateDebugPanel(nowMs, frameElapsedMs, simulatedSteps, wasClamped) {
 			(runtimeDataContext?.dataPack.audio.comudat.byteLength ?? 0) +
 				(runtimeDataContext?.dataPack.audio.theme.byteLength ?? 0),
 		).padStart(8, " ")}`,
+		`data.token0       ${tokenPreviewText || "-"}`,
+		`mission.pages     ${String(missionPreviewPages.length).padStart(8, " ")}`,
+		`mission.page1     ${(missionPreviewPages[0] ?? "-").slice(0, 72)}`,
 		`audio.master      ${fixed(audioSettings.masterVolume, 2)}`,
 		`audio.sfx         ${fixed(audioSettings.sfxVolume, 2)}`,
 		`audio.music       ${fixed(audioSettings.musicVolume, 2)}`,
@@ -770,6 +1651,21 @@ function updateDebugPanel(nowMs, frameElapsedMs, simulatedSteps, wasClamped) {
 		`input.dockAttempt  ${String(inputSnapshot.dockAttemptPressed)}`,
 		`input.launch       ${String(inputSnapshot.launchPressed)}`,
 		`input.keys         ${inputSnapshot.pressedKeys.join(", ") || "-"}`,
+		`bind.fire         ${formatKeyCode(keyBindings.fireLaser).padStart(8, " ")}`,
+		`bind.menu         ${formatKeyCode(keyBindings.menuToggle).padStart(8, " ")}`,
+		`bind.pause        ${formatKeyCode(keyBindings.pauseToggle).padStart(8, " ")}`,
+		`a11y.contrast     ${String(accessibilitySettings.highContrast).padStart(8, " ")}`,
+		`a11y.largeText    ${String(accessibilitySettings.largeText).padStart(8, " ")}`,
+		`a11y.reducedFlash ${String(accessibilitySettings.reducedFlashing).padStart(8, " ")}`,
+		`a11y.leftTouch    ${String(accessibilitySettings.leftHandedTouch).padStart(8, " ")}`,
+		`gp.connected      ${String(gamepadSnapshot.connected).padStart(8, " ")}`,
+		`gp.rollAxis       ${fixed(gamepadSnapshot.rollAxis, 2)}`,
+		`gp.pitchAxis      ${fixed(gamepadSnapshot.pitchAxis, 2)}`,
+		`gp.throttle       ${fixed(gamepadSnapshot.throttleAxis, 2)}`,
+		`touch.active      ${String(touchSnapshot.active).padStart(8, " ")}`,
+		`touch.rollAxis    ${fixed(touchSnapshot.rollAxis, 2)}`,
+		`touch.pitchAxis   ${fixed(touchSnapshot.pitchAxis, 2)}`,
+		`touch.throttle    ${fixed(touchSnapshot.throttleAxis, 2)}`,
 		"",
 		"url params:",
 		"?scenario=empty&variant=gma85-ntsc&timing=auto&seed=12345&debug=1",
@@ -784,11 +1680,22 @@ function updateDebugPanel(nowMs, frameElapsedMs, simulatedSteps, wasClamped) {
 function animate(nowMs) {
 	// Push latest control state into the deterministic simulation before stepping.
 	if (!paused) {
-		simulation.setPilotControls(mapKeyboardSnapshotToPilotControls(keyboard.snapshot()));
+		const mergedControls = mergePilotControls([
+			mapKeyboardSnapshotToPilotControls(keyboard.snapshot(), keyBindings),
+			mapGamepadSnapshotToPilotControls(gamepad.snapshot()),
+			mapTouchSnapshotToPilotControls(touchInput.snapshot()),
+		]);
+		simulation.setPilotControls(mergedControls);
 	}
 	const frameNowMs = paused ? (pauseFrameNowMs ?? nowMs) : nowMs;
 	const metrics = runner.frame(frameNowMs);
 	const snapshot = simulation.snapshot();
+	const shouldShowDockedPanel =
+		snapshot.gameState.views.isDocked || snapshot.gameState.flow.phase === "docked";
+	dockedUiPanel.hidden = !shouldShowDockedPanel;
+	if (shouldShowDockedPanel) {
+		dockedUiContent.textContent = formatDockedUiContent(activeDockedFlow, snapshot);
+	}
 	syncMusicTrack(snapshot);
 	const elapsedMs = Math.max(0.0001, metrics.elapsedMs);
 	perfStats.lastFps = 1000 / elapsedMs;
@@ -823,6 +1730,9 @@ window.requestAnimationFrame(animate);
 // Dispose input listeners when the page unloads to keep teardown clean in tests.
 window.addEventListener("beforeunload", () => {
 	saveSnapshotToLocalStorage(true);
+	delete window.__ELITE_DETERMINISM_PROBE__;
 	audio.dispose();
+	gamepad.dispose();
+	touchInput.dispose();
 	keyboard.dispose();
 });

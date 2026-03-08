@@ -38,6 +38,13 @@ export type {
 	ScannerModel,
 } from "./cockpitHud";
 export { createCockpitHudModel } from "./cockpitHud";
+export type {
+	MissionTextControl,
+	MissionTextPage,
+	MissionTextRenderOptions,
+	MissionTextToken,
+} from "./missionTextRenderer";
+export { parseMissionTextTokens, renderMissionTextPages } from "./missionTextRenderer";
 export type { PixelPlotter, RasterBounds, RasterPoint } from "./rasterPrimitives";
 export { drawCircle, drawLine, plotPixel } from "./rasterPrimitives";
 export type {

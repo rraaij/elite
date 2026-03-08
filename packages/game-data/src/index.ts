@@ -37,3 +37,5 @@ export {
 } from "./binaryParsers";
 export type { ScenarioDefinition } from "./scenarios";
 export { DEFAULT_SCENARIOS, getScenarioById } from "./scenarios";
+export type { TokenExpansionOptions, TokenExpansionTables } from "./tokenExpansion";
+export { expandIantokTokenText, expandWordsTokenText } from "./tokenExpansion";

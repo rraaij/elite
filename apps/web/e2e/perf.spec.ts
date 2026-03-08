@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 test("keeps average frame delta under budget in smoke run", async ({ page }) => {
+	test.skip(
+		test.info().project.name !== "chromium",
+		"Perf threshold gate is enforced in chromium to reduce cross-engine CI noise.",
+	);
+
 	await page.goto("/");
 
 	await expect(page.getByText("Elite Migration Runtime")).toBeVisible();

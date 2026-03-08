@@ -32,6 +32,7 @@ npm run test:replay
 
 - Runs replay baseline suites only.
 - CI workflow (`.github/workflows/replay-regression.yml`) enforces this on push/PR.
+- Browser-side determinism probe is covered in Playwright E2E (`apps/web/e2e/determinism.spec.ts`) and runs across browser projects.
 
 ### 3. Static + Type Gates
 - TypeScript project references + Biome checks:

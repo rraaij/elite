@@ -13,7 +13,11 @@ export {
 export { createDorndGenerator, dorndStep } from "./dorndRng";
 export { createFixedStepRunner } from "./fixedStepRunner";
 export { createDeterministicRng } from "./random";
-export { deserializeSaveState, serializeSaveState } from "./saveState";
+export {
+	deserializeLegacyCommanderFile,
+	deserializeSaveState,
+	serializeSaveState,
+} from "./saveState";
 export { createEmptySimulation } from "./simulation";
 export {
 	cloneCanonicalGameState,

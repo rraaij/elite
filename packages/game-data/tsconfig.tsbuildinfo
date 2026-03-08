@@ -1,1 +1,1 @@
-{"root":["./src/binaryparsers.ts","./src/generatedatapacks.ts","./src/index.ts","./src/scenarios.ts"],"version":"5.9.3"}
+{"root":["./src/binaryparsers.ts","./src/generatedatapacks.ts","./src/index.ts","./src/scenarios.ts","./src/tokenexpansion.ts"],"version":"5.9.3"}

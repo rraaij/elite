@@ -8,7 +8,7 @@ export default defineConfig({
 		trace: "on-first-retry",
 	},
 	webServer: {
-		command: "npm run preview:prod",
+		command: "npm run build:prod && npm run preview:prod",
 		port: 4173,
 		reuseExistingServer: !process.env.CI,
 		timeout: 120_000,

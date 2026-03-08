@@ -113,19 +113,19 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 
 ## Milestone M6: Input, Menus, Text, and Save/Load
 
-- [ ] Phase M6.1: Input system migration.
-- [ ] Step M6.1.1: Port keyboard mapping behavior (flight keys + docked/menu keys).
-- [ ] Step M6.1.2: Add gamepad and touch overlays for browser/mobile usability.
-- [ ] Step M6.1.3: Provide remapping and accessibility options.
-- [ ] Phase M6.2: Text/token engine.
-- [ ] Step M6.2.1: Implement recursive/extended token expansion.
-- [ ] Step M6.2.2: Implement mission/debrief text rendering and control codes.
-- [ ] Step M6.2.3: Implement UI text flows (status, charts, inventory, market, prompts).
-- [ ] Phase M6.3: Commander persistence.
-- [ ] Step M6.3.1: Model commander save format and checksum validation behavior.
-- [ ] Step M6.3.2: Implement browser persistence (IndexedDB/localStorage) + export/import.
-- [ ] Step M6.3.3: Add compatibility path for legacy commander files (if legally allowed).
-- [ ] Exit criteria M6: full game loop navigable from title to save/load cycle in browser.
+- [x] Phase M6.1: Input system migration.
+- [x] Step M6.1.1: Port keyboard mapping behavior (flight keys + docked/menu keys).
+- [x] Step M6.1.2: Add gamepad and touch overlays for browser/mobile usability.
+- [x] Step M6.1.3: Provide remapping and accessibility options.
+- [x] Phase M6.2: Text/token engine.
+- [x] Step M6.2.1: Implement recursive/extended token expansion.
+- [x] Step M6.2.2: Implement mission/debrief text rendering and control codes.
+- [x] Step M6.2.3: Implement UI text flows (status, charts, inventory, market, prompts).
+- [x] Phase M6.3: Commander persistence.
+- [x] Step M6.3.1: Model commander save format and checksum validation behavior.
+- [x] Step M6.3.2: Implement browser persistence (IndexedDB/localStorage) + export/import.
+- [x] Step M6.3.3: Add compatibility path for legacy commander files (if legally allowed).
+- [x] Exit criteria M6: full game loop navigable from title to save/load cycle in browser.
 
 ## Milestone M7: AI, Economy, Missions, and World Systems
 
@@ -145,11 +145,11 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 
 ## Milestone M8: Audio and Music
 
-- [ ] Phase M8.1: SFX pipeline.
+- [x] Phase M8.1: SFX pipeline.
 - [x] Step M8.1.1: Port sound effect priority/envelope/frequency behavior from table-driven routines (initial WebAudio table-driven synth + runtime cue wiring).
 - [x] Step M8.1.2: Implement channel mixing and concurrency limits in WebAudio (voice pool, per-cue caps, priority-based voice stealing).
 - [x] Step M8.1.3: Validate gameplay-critical cues (laser, ECM, explosions, alerts) with cue-policy tests.
-- [ ] Phase M8.2: Music pipeline.
+- [x] Phase M8.2: Music pipeline.
 - [x] Step M8.2.1: Implement parser/player for docking and title music data (initial 5-byte frame parser + 3-voice WebAudio player).
 - [x] Step M8.2.2: Integrate runtime music state transitions (title, docking, in-flight) with explicit policy + tests.
 - [x] Step M8.2.3: Add mute/volume/mix controls and persistence.
@@ -190,10 +190,10 @@ Rebuild the Commodore 64 Elite codebase in TypeScript so it runs natively in mod
 
 - [ ] Stream X1: Parity tests for every migrated subsystem before feature sign-off.
 - [ ] Stream X2: Variant support abstraction (no variant-specific logic leaks into unrelated modules).
-- [ ] Stream X3: Determinism checks across browsers for simulation and replays.
+- [x] Stream X3: Determinism checks across browsers for simulation and replays.
 - [x] Stream X4: Performance guardrails (frame budget, GC pressure, memory footprint).
-- [ ] Stream X5: Accessibility and input ergonomics.
-- [ ] Stream X6: Security/privacy review for save data handling in browser storage.
+- [x] Stream X5: Accessibility and input ergonomics.
+- [x] Stream X6: Security/privacy review for save data handling in browser storage.
 
 ## Suggested Execution Order (Low-Risk Vertical Slices)
 
