@@ -1,13 +1,13 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "outDir": "./dist",
-    "declaration": true,
-    "declarationMap": true,
-    "baseUrl": "./",
-    "paths": {
-      "@elite/game-core": ["../game-core/src/index.ts"]
-    }
-  },
-  "include": ["src/**/*.ts"]
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"declaration": true,
+		"declarationMap": true,
+		"baseUrl": "./",
+		"paths": {
+			"@elite/game-core": ["../game-core/src/index.ts"]
+		}
+	},
+	"include": ["src/**/*.ts"]
 }

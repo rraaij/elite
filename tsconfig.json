@@ -1,11 +1,11 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./packages/game-core" },
-    { "path": "./packages/game-renderer" },
-    { "path": "./packages/game-data" },
-    { "path": "./packages/game-input" },
-    { "path": "./packages/game-tests" },
-    { "path": "./apps/web" }
-  ]
+	"files": [],
+	"references": [
+		{ "path": "./packages/game-core" },
+		{ "path": "./packages/game-renderer" },
+		{ "path": "./packages/game-data" },
+		{ "path": "./packages/game-input" },
+		{ "path": "./packages/game-tests" },
+		{ "path": "./apps/web" }
+	]
 }

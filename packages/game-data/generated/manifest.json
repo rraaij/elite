@@ -1,60 +1,60 @@
 {
-  "schemaVersion": 1,
-  "generatedAtIso": "2026-03-07T14:33:07.641Z",
-  "sourceRoot": "/Users/ramonvanraaij/Developer/_github.com/elite/sourcecode/4-reference-binaries",
-  "outputRoot": "/Users/ramonvanraaij/Developer/_github.com/elite/packages/game-data/generated",
-  "variants": [
-    {
-      "variantId": "gma85-ntsc",
-      "wordsTokenCount": 147,
-      "wordsPaddingBytes": 4,
-      "iantokTokenCount": 256,
-      "iantokTrailingPayloadBytes": 677,
-      "shipBlueprintCount": 33,
-      "spriteCount": 7,
-      "fontGlyphCount": 96,
-      "codialsBytes": 2248,
-      "comudatBytes": 2615,
-      "themeBytes": 2931
-    },
-    {
-      "variantId": "gma86-pal",
-      "wordsTokenCount": 147,
-      "wordsPaddingBytes": 4,
-      "iantokTokenCount": 256,
-      "iantokTrailingPayloadBytes": 677,
-      "shipBlueprintCount": 33,
-      "spriteCount": 7,
-      "fontGlyphCount": 96,
-      "codialsBytes": 2248,
-      "comudatBytes": 2615,
-      "themeBytes": 2931
-    },
-    {
-      "variantId": "source-disk-build",
-      "wordsTokenCount": 147,
-      "wordsPaddingBytes": 5,
-      "iantokTokenCount": 256,
-      "iantokTrailingPayloadBytes": 677,
-      "shipBlueprintCount": 33,
-      "spriteCount": 7,
-      "fontGlyphCount": 96,
-      "codialsBytes": 2248,
-      "comudatBytes": 2615,
-      "themeBytes": 2925
-    },
-    {
-      "variantId": "source-disk-files",
-      "wordsTokenCount": 147,
-      "wordsPaddingBytes": 4,
-      "iantokTokenCount": 256,
-      "iantokTrailingPayloadBytes": 677,
-      "shipBlueprintCount": 33,
-      "spriteCount": 7,
-      "fontGlyphCount": 96,
-      "codialsBytes": 2248,
-      "comudatBytes": 2615,
-      "themeBytes": 2925
-    }
-  ]
+	"schemaVersion": 1,
+	"generatedAtIso": "2026-03-07T14:33:07.641Z",
+	"sourceRoot": "/Users/ramonvanraaij/Developer/_github.com/elite/sourcecode/4-reference-binaries",
+	"outputRoot": "/Users/ramonvanraaij/Developer/_github.com/elite/packages/game-data/generated",
+	"variants": [
+		{
+			"variantId": "gma85-ntsc",
+			"wordsTokenCount": 147,
+			"wordsPaddingBytes": 4,
+			"iantokTokenCount": 256,
+			"iantokTrailingPayloadBytes": 677,
+			"shipBlueprintCount": 33,
+			"spriteCount": 7,
+			"fontGlyphCount": 96,
+			"codialsBytes": 2248,
+			"comudatBytes": 2615,
+			"themeBytes": 2931
+		},
+		{
+			"variantId": "gma86-pal",
+			"wordsTokenCount": 147,
+			"wordsPaddingBytes": 4,
+			"iantokTokenCount": 256,
+			"iantokTrailingPayloadBytes": 677,
+			"shipBlueprintCount": 33,
+			"spriteCount": 7,
+			"fontGlyphCount": 96,
+			"codialsBytes": 2248,
+			"comudatBytes": 2615,
+			"themeBytes": 2931
+		},
+		{
+			"variantId": "source-disk-build",
+			"wordsTokenCount": 147,
+			"wordsPaddingBytes": 5,
+			"iantokTokenCount": 256,
+			"iantokTrailingPayloadBytes": 677,
+			"shipBlueprintCount": 33,
+			"spriteCount": 7,
+			"fontGlyphCount": 96,
+			"codialsBytes": 2248,
+			"comudatBytes": 2615,
+			"themeBytes": 2925
+		},
+		{
+			"variantId": "source-disk-files",
+			"wordsTokenCount": 147,
+			"wordsPaddingBytes": 4,
+			"iantokTokenCount": 256,
+			"iantokTrailingPayloadBytes": 677,
+			"shipBlueprintCount": 33,
+			"spriteCount": 7,
+			"fontGlyphCount": 96,
+			"codialsBytes": 2248,
+			"comudatBytes": 2615,
+			"themeBytes": 2925
+		}
+	]
 }

@@ -3,9 +3,9 @@
  * The explicit get/set API allows snapshots to restore exact RNG continuity.
  */
 export interface DeterministicRng {
-  nextUint32(): number;
-  getState(): number;
-  setState(nextState: number): void;
+	nextUint32(): number;
+	getState(): number;
+	setState(nextState: number): void;
 }
 
 // Constants for a tiny LCG with stable behavior in all JS engines.
@@ -17,7 +17,7 @@ const LCG_INCREMENT = 1_013_904_223;
  * This keeps seed handling deterministic for all callers.
  */
 function normalizeUint32(value: number): number {
-  return value >>> 0;
+	return value >>> 0;
 }
 
 /**
@@ -25,21 +25,21 @@ function normalizeUint32(value: number): number {
  * The sequence is deterministic across browser and Node runtimes.
  */
 export function createDeterministicRng(seed: number): DeterministicRng {
-  let state = normalizeUint32(seed);
+	let state = normalizeUint32(seed);
 
-  return {
-    nextUint32(): number {
-      // Math.imul preserves 32-bit integer multiplication semantics.
-      state = (Math.imul(state, LCG_MULTIPLIER) + LCG_INCREMENT) >>> 0;
-      return state;
-    },
+	return {
+		nextUint32(): number {
+			// Math.imul preserves 32-bit integer multiplication semantics.
+			state = (Math.imul(state, LCG_MULTIPLIER) + LCG_INCREMENT) >>> 0;
+			return state;
+		},
 
-    getState(): number {
-      return state;
-    },
+		getState(): number {
+			return state;
+		},
 
-    setState(nextState: number): void {
-      state = normalizeUint32(nextState);
-    },
-  };
+		setState(nextState: number): void {
+			state = normalizeUint32(nextState);
+		},
+	};
 }

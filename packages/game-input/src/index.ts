@@ -1,2 +1,2 @@
-export { createKeyboardInput } from "./keyboard";
 export type { KeyboardInput, KeyboardInputSnapshot } from "./keyboard";
+export { createKeyboardInput } from "./keyboard";
